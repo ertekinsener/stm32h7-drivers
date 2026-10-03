@@ -1,0 +1,126 @@
+@startuml dma_class
+title DMA driver (DMA1/DMA2 + DMAMUX1) - static structure
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+
+package "hal" {
+  class WordMmioBus <<groov bus>> {
+    +{static} read<Name, Mask>(address) : sender
+    +{static} write<Name, Mask, IdMask, IdValue>(address, value) : sender
+  }
+  note bottom of WordMmioBus
+    Always 32-bit accesses
+    (DMA/DMAMUX are word-only).
+  end note
+  class InterruptLockPolicy <<conc policy>> {
+    +{static} call_in_critical_section(f, pred...)
+  }
+  note bottom of InterruptLockPolicy
+    Injected as conc::injected_policy<>.
+    PRIMASK save / disable / restore.
+  end note
+}
+
+package "stm32h7 (groov register maps)" {
+  class dma1 <<groov::group>>
+  class dma2 <<groov::group>>
+  class dmamux1 <<groov::group>>
+}
+
+package "dma" {
+  enum Controller {
+    kDma1
+    kDma2
+  }
+  enum Event <<bitmask>> {
+    kNone
+    kTransferComplete
+    kHalfTransfer
+    kTransferError
+    kDirectModeError
+    kFifoError
+  }
+  enum Error {
+    kBusy
+    kInvalidConfig
+    kInvalidAddress
+    kInvalidLength
+    kTimeout
+    kTransferError
+    kRtos
+  }
+  class Config <<struct>> {
+    +request : Request
+    +direction : Direction
+    +mode : Mode
+    +peripheral_size : DataSize
+    +memory_size : DataSize
+    +peripheral_increment : bool
+    +memory_increment : bool
+    +priority : Priority
+    +fifo : Fifo
+    +bufferable : bool
+    +interrupts : Event
+  }
+  class Callback <<struct>> {
+    +function : void (*)(void*, Event) noexcept
+    +context : void*
+    +operator()(Event) : void
+  }
+  class "detail::StreamTraits<C, N>" as Traits <<constexpr>> {
+    +{static} kGroup : dma1 | dma2
+    +{static} kCr, kNdtr, kPar, kM0ar, kFcr : ct_string
+    +{static} kFlagReg, kClearReg : ct_string
+    +{static} kTcif ... kCfeif : ct_string
+    +{static} kMuxChannel : size_t
+    +{static} kIrq : IRQn_Type
+    +{static} kClockEnable : uint32_t
+  }
+  class "Stream<C, N>" as Stream <<static>> {
+    -{static} callback_ : Callback
+    -{static} interrupts_ : Event
+    +{static} Init(irq_priority) : void
+    +{static} SetCallback(Callback) : void
+    +{static} Configure(const Config&) : expected<void, Error>
+    +{static} Start(peripheral, memory, count) : expected<void, Error>
+    +{static} Stop() : expected<void, Error>
+    +{static} IsBusy() : bool
+    +{static} Remaining() : uint16_t
+    +{static} HandleIrq() : void
+    -{static} ClearFlags() : void
+  }
+  note right of Stream
+    Declared in stream.h; defined and explicitly
+    instantiated for all 16 streams in stream.cc
+    (always built optimized).
+  end note
+  class "dmamux1::Route<Channel>(Request)" as Route <<function>>
+  class TxCompletion {
+    -flags_ : TX_EVENT_FLAGS_GROUP
+    +Create(name) : expected<void, Error>
+    +callback() : Callback
+    +Wait(timeout_ticks) : expected<Event, Error>
+    -{static} OnEvent(void*, Event) : void
+  }
+  class "IsDmaReachable(address)" as Reachable <<function>>
+}
+
+class "dma_irq.cc\nDMAx_StreamN_IRQHandler()" as Irq <<extern C>>
+
+Stream ..> Traits : register names
+Stream ..> Config
+Stream o-- Callback
+Stream ..> Route : Configure()
+Stream ..> Reachable : Start()
+Stream ..> Event
+Stream ..> Error
+Traits ..> dma1
+Traits ..> dma2
+Route ..> dmamux1
+dma1 ..> WordMmioBus : bus
+dma2 ..> WordMmioBus : bus
+dmamux1 ..> WordMmioBus : bus
+WordMmioBus ..> InterruptLockPolicy : via async::sync_wait
+Irq ..> Stream : HandleIrq()
+TxCompletion ..> Callback : provides
+@enduml

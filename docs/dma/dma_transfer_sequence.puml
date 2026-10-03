@@ -1,0 +1,61 @@
+@startuml dma_transfer_sequence
+title USART3 TX over DMA1 stream 1 - blocking send with interrupt completion
+autonumber
+
+participant "User thread" as T
+participant "TxCompletion" as TC
+participant "Stream<kDma1, 1>" as S
+participant "dmamux1::Route<1>" as M
+participant "groov\n(WordMmioBus)" as G
+participant "DMA1 / DMAMUX1" as HW
+participant "DMA1_Stream1_IRQHandler" as ISR
+
+== Setup ==
+T -> TC : Create("uart tx dma")
+T -> S : Init(irq_priority)
+note right of S : RCC AHB1ENR.DMA1EN, NVIC priority/enable
+T -> S : SetCallback(tc.callback())
+T -> S : Configure(config)
+activate S
+S -> G : write s1cr.en = 0
+loop while s1cr.en == 1 (bounded)
+  S -> G : read s1cr.en
+end
+S -> G : write lifcr (ctcif1..cfeif1 = 1)
+S -> M : Route(kUsart3Tx)
+M -> G : write dmamux1_c1cr
+S -> G : write s1fcr (feie, dmdis, fth)
+S -> G : write s1cr (dir, pl, sizes, inc, trbuff, *ie, en = 0)
+S --> T : expected<void>
+deactivate S
+
+== Transfer ==
+T -> S : Start(&USART3->TDR, buffer, length)
+activate S
+S -> S : IsDmaReachable(), IsBusy()
+S -> G : write lifcr (clear)
+S -> G : write s1par, s1m0ar, s1ndtr
+S -> G : write s1cr.en = 1
+G -> HW : 32-bit stores
+S --> T : expected<void>
+deactivate S
+
+T -> TC : Wait(timeout)
+activate TC
+note right of T : thread blocks on TX_EVENT_FLAGS
+
+HW -> ISR : TCIF1
+activate ISR
+ISR -> S : HandleIrq()
+S -> G : read lisr (tcif1, htif1, teif1, dmeif1, feif1)
+S -> G : write lifcr (observed flags only, single store)
+alt TE or DME
+  S -> G : write s1cr.en = 0
+end
+S -> TC : callback(kTransferComplete)
+TC -> TC : tx_event_flags_set()
+deactivate ISR
+
+TC --> T : expected<Event>(kTransferComplete)
+deactivate TC
+@enduml

@@ -1,0 +1,25 @@
+@startuml dma_stream_state
+title Stream<C, N> lifecycle
+
+[*] --> Uninitialized
+Uninitialized --> Idle : Init()
+
+Idle --> Configured : Configure() [valid]
+Idle --> Idle : Configure() [invalid] / kInvalidConfig
+
+Configured --> Configured : Configure()
+Configured --> Busy : Start() [count > 0, reachable]
+Configured --> Configured : Start() [invalid] / kInvalidLength, kInvalidAddress
+
+Busy : entry / SxCR.EN = 1
+Busy : Start() / kBusy
+
+Busy --> Configured : TC [mode == kNormal] / callback(kTransferComplete)
+Busy --> Busy : HT / callback(kHalfTransfer)
+Busy --> Busy : TC [mode == kCircular] / callback(kTransferComplete)
+Busy --> Error : TE or DME / EN = 0, callback(error)
+Busy --> Busy : FE [fifo mode] / callback(kFifoError)
+Busy --> Configured : Stop()
+
+Error --> Configured : Configure() or Stop()
+@enduml
