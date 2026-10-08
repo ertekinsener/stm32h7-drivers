@@ -90,6 +90,8 @@ To add a port:
 | `CM7/app/include/dma/types.h` | Missing DMAMUX requests: UART5, USART6, UART7, UART8. |
 | `webserver/uart_config_service.{h,cc}` | `UartPortBinding {port_id, apply, context}`. The service range-checks the decoded enums, finds the port and calls `apply`; it stores the config only if the hardware accepted it. |
 | `CM7/app/source/app/netxduo_app.cc` | Owns `ThreadxSerial<Usart3Vcp> vcp_serial`. `ToDriverConfig()` maps web UI settings to `uart::Config` (9 data bits and 0.5 stop bits are rejected). The port-3 binding calls `Configure()`. `NetxduoApp()` creates the port and applies 115200 8N1. |
+| `CM7/app/include/app/vcp.h` | New. `app::VcpSerial` and `app::Vcp()`, which give other code access to the VCP port owned by `netxduo_app.cc`. |
+| `CM7/app/source/app/app.cc` | Echo test in the main thread. `RunVcpEcho()` prints a banner, echoes everything received, and once a second prints any driver errors since the last check (`[uart] framing error`, `[uart] rx buffer overflow`, ...). |
 | `CLAUDE.md` | USART section and build notes. |
 
 ## Documentation (`docs/uart/`)
@@ -101,13 +103,26 @@ To add a port:
 | `usart_tx_configure_sequence.puml` | Sequence diagram: chunked DMA `Write()`, and reconfiguration from the web UI under both mutexes. |
 | `README.md` | This file. |
 
+## Testing on hardware
+
+The main thread runs an echo test on the VCP (`RunVcpEcho()` in `app.cc`).
+
+1. Flash the board and open the ST-LINK VCP at 115200 8N1. The banner
+   appears.
+2. Type, or paste a few kilobytes of text: everything comes back unchanged.
+   Long pastes wrap the RX ring and exercise the half/full-transfer events;
+   short bursts end on IDLE.
+3. Set the terminal to the wrong baud rate: `[uart] framing error` lines
+   appear and reception keeps working once the rate is fixed.
+4. Change the settings on the web UI (port 3), for example 921600 with
+   oversampling by 8, or even parity. Reconnect the terminal with the same
+   settings, and the echo works again. Unsupported settings return HTTP 422.
+
 ## Required outside these files
 
-- **CubeMX:** remove USART3 and its DMA requests from `stm32_webserver.ioc`
-  and regenerate. The driver defines `USART3_IRQHandler` and the DMA stream
-  handlers, so the CubeMX copies in `stm32h7xx_it.c` cause duplicate-symbol
-  link errors. Regenerating should also fix the `MX_UART4_Init()` mismatch
-  in `main.c`.
+- **CubeMX:** USART3 and its DMA requests must stay disabled in
+  `stm32_webserver.ioc`. The driver defines `USART3_IRQHandler` and the DMA
+  stream handlers.
 - **Buffer sizing:** the RX ring must hold everything that arrives between two
   `Read()` calls. At 115200 baud (~11.5 KB/s), 512 B covers about 44 ms.
   Overflows are reported as `kRxBufferOverflow`; the oldest data is dropped.
