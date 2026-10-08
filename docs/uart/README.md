@@ -69,7 +69,7 @@ translation units.
 |---|---|
 | `hal/gpio.h`, `app/source/hal/gpio.cc` | `hal::Pin {port, number, alternate}` and `ConfigureAlternate(pin, Pull, Speed)`: enables the GPIO port clock and sets push-pull alternate-function mode via CMSIS. No groov, because pins are configured once at init. |
 | `hal/word_mmio_bus.h`, `hal/concurrency_policy.h` | Shared with the DMA driver; see `docs/dma/README.md`. |
-| `shared/include/ring/mpsc_ring.h` | `ring::MpscRing<kCapacity, kRecordSlots>`: lock-free MPSC ring of variable-size records. Producers reserve bytes and a record slot with one CAS on a packed 32-bit word, copy, then stamp the slot; a record never wraps (the buffer end is skipped instead). The single consumer's `Peek()` returns the committed, contiguous records at the tail as one span, and `Release()` frees them. Neither side waits. Storage is attached at runtime (`DMA_BUFFER`); control words stay in normal RAM. Host tests in `shared/test/`. |
+| `shared/include/ring/mpsc_ring.h` | `ring::MpscRing<kCapacity, kRecordSlots>`: lock-free MPSC ring of variable-size records. Producers reserve bytes and a record slot with one CAS on a packed 32-bit word, copy, then stamp the slot; a record never wraps (the buffer end is skipped instead). The single consumer's `Peek()` returns the committed, contiguous records at the tail as one span, and `Release()` frees them. Neither side waits. Storage is attached at runtime (`DMA_BUFFER`); control words stay in normal RAM. Shared with the CM4 log channel (`docs/logging/README.md`). Host tests in `shared/test/`. |
 
 ## Sources and build (`CM7/app/source/uart/`)
 
@@ -95,7 +95,7 @@ To add a port:
 | `webserver/uart_config_service.{h,cc}` | `UartPortBinding {port_id, apply, context}`. The service range-checks the decoded enums, finds the port and calls `apply`; it stores the config only if the hardware accepted it. |
 | `CM7/app/source/app/netxduo_app.cc` | Owns `ThreadxSerial<Usart3Vcp> vcp_serial`. `ToDriverConfig()` maps web UI settings to `uart::Config` (9 data bits and 0.5 stop bits are rejected). The port-3 binding calls `Configure()`. `NetxduoApp()` creates the port and applies 115200 8N1. |
 | `CM7/app/include/app/vcp.h` | New. `app::VcpSerial` and `app::Vcp()`, which give other code access to the VCP port owned by `netxduo_app.cc`. |
-| `CM7/app/source/app/app.cc` | Echo test in the main thread. `RunVcpEcho()` prints a banner, echoes everything received, and once a second prints any driver errors since the last check (`[uart] framing error`, `[uart] rx buffer overflow`, ...). |
+| `CM7/app/source/app/app.cc` | Echo test in the main thread. `RunVcpEcho()` prints a banner, echoes everything received, and once a second prints any driver errors since the last check (`W cm7 uart: framing error`, `W cm7 uart: rx buffer overflow`, ...) through the logger. |
 | `CLAUDE.md` | USART section and build notes. |
 
 ## Documentation (`docs/uart/`)
@@ -116,7 +116,7 @@ The main thread runs an echo test on the VCP (`RunVcpEcho()` in `app.cc`).
 2. Type, or paste a few kilobytes of text: everything comes back unchanged.
    Long pastes wrap the RX ring and exercise the half/full-transfer events;
    short bursts end on IDLE.
-3. Set the terminal to the wrong baud rate: `[uart] framing error` lines
+3. Set the terminal to the wrong baud rate: `W cm7 uart: framing error` log lines
    appear and reception keeps working once the rate is fixed.
 4. Change the settings on the web UI (port 3), for example 921600 with
    oversampling by 8, or even parity. Reconnect the terminal with the same
@@ -179,7 +179,7 @@ appear). Switch back with `-DCM7_TX_STRESS_TEST=OFF`.
 
 `ring::MpscRing` does not depend on the hardware and is tested on the host
 (edge cases, then 4 producer threads and one consumer checking that every
-record arrives whole, once and in order):
+record arrives whole, once and in order), together with the logger front end:
 
 ```bash
 cmake -S shared/test -B build/host-test && cmake --build build/host-test
