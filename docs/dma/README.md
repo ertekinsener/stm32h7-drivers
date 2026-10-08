@@ -69,7 +69,7 @@ These were SVD-generated and committed earlier, then rewritten by this work.
 | File | Purpose |
 |---|---|
 | `stream_instance.cc.in` | Template for one generated translation unit per stream. Each one holds the explicit instantiation `template class dma::Stream<...>;` and the matching `extern "C" DMAx_StreamN_IRQHandler()`. |
-| `dma_streams.cmake` | Cache variables `DMA_STREAMS` (which streams to build, e.g. `"1.0;1.1"`; default all 16) and `DMA_COMPILE_JOBS` (Ninja pool size, default 4). `target_add_dma_streams()` generates the sources into `build/generated_dma/` and builds them as the `dma_streams` object library at `-O1 -g1` in Debug, then links it in. |
+| `dma_streams.cmake` | Cache variable `DMA_STREAMS` (which streams to build, e.g. `"1.0;1.1"`; default all 16). `target_add_dma_streams()` generates the sources into `build/generated_dma/` and builds them with `groov_add_optimized_objects()` (see `CM7/cmake/groov_baremetal.cmake`) as the `dma_streams` object library, then links it in. |
 | `tx_completion.cc` | `TxCompletion` implementation: `tx_event_flags_create/get/set/delete`. Error events map to `Error::kTransferError`. |
 | `stream_traits_check.cc` | `static_assert`s on `StreamTraits` against the CMSIS IRQ numbers and RM0399: IRQ numbers, DMAMUX channels, LISR/HISR split, generated register names. No runtime code. |
 
@@ -79,7 +79,8 @@ Generated at configure time (not in git): `CM7/build/generated_dma/dma<1|2>_stre
 
 | File | Changes |
 |---|---|
-| `CM7/CMakeLists.txt` | C++ standard 20 → 23. `groov_baremetal` interface target: groov plus `STDX_FREESTANDING`, `CONC_FREESTANDING`, `ASYNC_FREESTANDING`. Includes `dma_streams.cmake` and calls `target_add_dma_streams()`. Adds `dma_sources`. Links `groov_baremetal` with the plain signature, because `mx-generated.cmake` uses it. |
+| `CM7/CMakeLists.txt` | C++ standard 20 → 23. Includes `cmake/groov_baremetal.cmake` and `dma_streams.cmake`, calls `target_add_dma_streams()`, adds `dma_sources`. Links `groov_baremetal` with the plain signature, because `mx-generated.cmake` uses it. |
+| `CM7/cmake/groov_baremetal.cmake` | Shared with the USART driver: adds groov; the `groov_baremetal` interface target (groov plus `STDX_FREESTANDING`, `CONC_FREESTANDING`, `ASYNC_FREESTANDING`); the `GROOV_COMPILE_JOBS` Ninja pool (default 4); `groov_add_optimized_objects()`, which builds groov-heavy TUs at `-O1 -g1` in Debug. |
 | `CM7/stm32h755xx_flash_CM7.ld` | New `.dma_buffer (NOLOAD)` section at 0x30010000 in D2_SRAM1. This is the upper half, clear of CM4's `.data`/`.bss` at the 0x10000000 alias. |
 | `CLAUDE.md` | Build notes on DMA compile cost and `DMA_STREAMS`, plus a DMA architecture section. |
 

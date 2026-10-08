@@ -1,0 +1,49 @@
+@startuml usart_rx_sequence
+title USART RX - circular DMA + IDLE line detection
+autonumber
+
+participant "Reader thread" as T
+participant "ThreadxSerial<Port>" as S
+participant "Usart<Port>" as U
+participant "RxDma\nStream<kDma1, 0>" as D
+participant "USART3 HW" as HW
+participant "USART3_IRQHandler" as UI
+participant "DMA1_Stream0_IRQHandler" as DI
+
+== Configure (UE = 0) ==
+U -> D : Configure(P2M, circular, byte, HT | TC | TE | DME, bufferable)
+U -> D : Start(&RDR, RxBuffer(), size)
+U -> HW : CR3.DMAR = 1, CR3.EIE = 1, CR1.IDLEIE = 1, UE = 1
+
+== Reception ==
+T -> S : Read(buffer, timeout)
+S -> S : tx_mutex_get(rx_mutex_)
+S -> U : Read(buffer)
+U --> S : 0 bytes
+S -> S : tx_event_flags_get(kRxDataFlag)
+activate S
+
+HW -> D : bytes (DMA requests)
+alt half or full ring reached
+  D -> DI : HT / TC
+  DI -> U : OnRxDma(events)
+else line idle after a burst
+  HW -> UI : IDLE
+  UI -> U : HandleIrq()
+  U -> HW : read ISR, write ICR (observed flags only, single store)
+end
+U -> U : UpdateRxHead()\nposition = (size - RxDma::Remaining()) % size\nrx_head_ += (position - rx_dma_position_) mod size
+alt rx_head_ - rx_tail_ > size
+  U -> S : callback(kRxData | kRxBufferOverflow)
+else
+  U -> S : callback(kRxData)
+end
+S -> S : tx_event_flags_set(kRxDataFlag)
+deactivate S
+
+S -> U : Read(buffer)
+U -> U : if lapped: tail = head - size\ncopy [tail, head) from ring (wraps)\nrx_tail_ = tail + n
+U --> S : n bytes
+S -> S : tx_mutex_put(rx_mutex_)
+S --> T : expected<size_t>(n)
+@enduml

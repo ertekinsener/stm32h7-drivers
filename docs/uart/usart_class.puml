@@ -1,0 +1,149 @@
+@startuml usart_class
+title USART driver - static structure
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+
+package "hal" {
+  class WordMmioBus <<groov bus>>
+  class Pin <<struct>> {
+    +port : Port
+    +number : uint8_t
+    +alternate : uint8_t
+  }
+  class "ConfigureAlternate(Pin, Pull, Speed)" as Gpio <<function>>
+}
+
+package "uart::regs" {
+  class "usart<Base>" as Regs <<groov::group>>
+}
+
+package "dma" {
+  class "Stream<C, N>" as DmaStream <<static>>
+}
+
+package "uart" {
+  enum Instance {
+    kUsart1
+    kUsart2
+    kUsart3
+    kUart4
+    kUart5
+    kUsart6
+    kUart7
+    kUart8
+  }
+  enum Event <<bitmask>> {
+    kRxData
+    kTxComplete
+    kOverrun
+    kRxBufferOverflow
+    kFramingError
+    kParityError
+    kNoise
+    kRxDmaError
+    kTxDmaError
+  }
+  class Config <<struct>> {
+    +baud_rate : uint32_t
+    +data_bits : WordLength
+    +stop_bits : StopBits
+    +parity : Parity
+    +flow_control : FlowControl
+    +oversampling : Oversampling
+    +fifo : bool
+    +swap_tx_rx : bool
+  }
+  class Callback <<struct>> {
+    +function : void (*)(void*, Event) noexcept
+    +context : void*
+  }
+  class "detail::InstanceTraits<I>" as Traits <<constexpr>> {
+    +{static} kBase : uintptr_t
+    +{static} kIrq : IRQn_Type
+    +{static} kRxRequest, kTxRequest : dma::Request
+    +{static} EnableClock() : void
+    +{static} KernelClockHz() : uint32_t
+  }
+  class "detail::ComputeBrr(clock, baud, oversampling)" as Brr <<constexpr function>>
+  class Usart3Vcp <<port descriptor>> {
+    +{static} kInstance = kUsart3
+    +RxDma = dma::Stream<kDma1, 0>
+    +TxDma = dma::Stream<kDma1, 1>
+    +{static} kTx = PD8 AF7
+    +{static} kRx = PD9 AF7
+    +{static} kRts, kCts : optional<Pin> = none
+    +{static} kIrqPriority = 6
+    +{static} kRxBufferSize = 512
+    +{static} kTxBufferSize = 256
+    +{static} RxBuffer() : span<uint8_t>
+    +{static} TxBuffer() : span<uint8_t>
+  }
+  class "Usart<Port>" as Usart <<static>> {
+    -{static} callback_ : Callback
+    -{static} rx_head_ : atomic<uint32_t>
+    -{static} rx_dma_position_ : uint32_t
+    -{static} rx_tail_ : atomic<uint32_t>
+    -{static} tx_busy_ : atomic<bool>
+    +{static} Init() : void
+    +{static} SetCallback(Callback) : void
+    +{static} Configure(const Config&) : expected<void, Error>
+    +{static} Read(span<uint8_t>) : size_t
+    +{static} Available() : size_t
+    +{static} Write(span<const uint8_t>) : expected<size_t, Error>
+    +{static} IsTxBusy() : bool
+    +{static} HandleIrq() : void
+    -{static} UpdateRxHead() : Event
+    -{static} OnRxDma(void*, dma::Event) : void
+    -{static} OnTxDma(void*, dma::Event) : void
+  }
+  note right of Usart
+    Declared in usart.h, defined in
+    detail/usart_impl.h, instantiated per
+    port in app/source/uart/<port>.cc
+    (always optimized, groov).
+  end note
+  class "ThreadxSerial<Port>" as Serial {
+    -tx_mutex_ : TX_MUTEX
+    -rx_mutex_ : TX_MUTEX
+    -flags_ : TX_EVENT_FLAGS_GROUP
+    -errors_ : atomic<uint16_t>
+    +Create(name) : expected<void, Error>
+    +Configure(const Config&) : expected<void, Error>
+    +Write(span<const uint8_t>, timeout) : expected<size_t, Error>
+    +Read(span<uint8_t>, timeout) : expected<size_t, Error>
+    +TakeErrors() : Event
+    -{static} OnEvent(void*, Event) : void
+  }
+}
+
+package "webserver" {
+  class UartPortBinding <<struct>> {
+    +port_id : uint8_t
+    +apply : bool (*)(void*, const UartConfig&) noexcept
+    +context : void*
+  }
+  class UartConfigService {
+    -ports_ : span<const UartPortBinding>
+    +set_config(const UartConfig&) : bool
+  }
+}
+
+class "usart3_vcp.cc\nUSART3_IRQHandler()" as Irq <<extern C>>
+
+Usart ..> Usart3Vcp : Port
+Usart ..> Traits : kInstance
+Usart ..> Brr : Configure()
+Usart ..> Regs : registers
+Usart ..> DmaStream : RX circular / TX normal
+Usart ..> Gpio : Init()
+Usart o-- Callback
+Usart ..> Config
+Usart ..> Event
+Usart3Vcp ..> Pin
+Regs ..> WordMmioBus : bus
+Serial ..> Usart : uses
+Serial ..> Callback : provides
+UartConfigService o-- UartPortBinding
+UartPortBinding ..> Serial : apply -> Configure()
+Irq ..> Usart : HandleIrq()
+@enduml

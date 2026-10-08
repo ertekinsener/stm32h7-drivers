@@ -54,6 +54,14 @@ enum class Request : std::uint8_t {
   kUsart3Tx = 46,
   kUart4Rx = 63,
   kUart4Tx = 64,
+  kUart5Rx = 65,
+  kUart5Tx = 66,
+  kUsart6Rx = 71,
+  kUsart6Tx = 72,
+  kUart7Rx = 79,
+  kUart7Tx = 80,
+  kUart8Rx = 81,
+  kUart8Tx = 82,
 };
 
 // Bitmask of stream events. Also selects which interrupts Configure() enables.
