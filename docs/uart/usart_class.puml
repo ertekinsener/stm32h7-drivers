@@ -21,6 +21,25 @@ package "dma" {
   class "Stream<C, N>" as DmaStream <<static>>
 }
 
+package "ring" {
+  class "MpscRing<kCapacity, kRecordSlots>" as Ring {
+    -data_ : uint8_t*
+    -head_ : atomic<uint32_t>  (records << 16 | position)
+    -tail_ : atomic<uint32_t>
+    -slots_ : array<Slot{stamp, extent}>
+    +Attach(span<uint8_t, kCapacity>) : void
+    +TryWrite(span<const uint8_t>) : bool
+    +Peek() : optional<Batch>
+    +Release(const Batch&) : void
+    +IsEmpty() : bool
+  }
+  note bottom of Ring
+    Lock-free MPSC: producers CAS head_,
+    copy, stamp the slot. Single consumer
+    peeks contiguous committed records.
+  end note
+}
+
 package "uart" {
   enum Instance {
     kUsart1
@@ -74,7 +93,7 @@ package "uart" {
     +{static} kRts, kCts : optional<Pin> = none
     +{static} kIrqPriority = 6
     +{static} kRxBufferSize = 512
-    +{static} kTxBufferSize = 256
+    +{static} kTxBufferSize = 2048
     +{static} RxBuffer() : span<uint8_t>
     +{static} TxBuffer() : span<uint8_t>
   }
@@ -83,16 +102,21 @@ package "uart" {
     -{static} rx_head_ : atomic<uint32_t>
     -{static} rx_dma_position_ : uint32_t
     -{static} rx_tail_ : atomic<uint32_t>
-    -{static} tx_busy_ : atomic<bool>
+    -{static} tx_ring_ : TxRing
+    -{static} tx_batch_ : TxRing::Batch
+    -{static} tx_in_flight_ : atomic<bool>
+    -{static} tx_paused_ : atomic<bool>
+    +{static} kMaxWriteSize : size_t
     +{static} Init() : void
     +{static} SetCallback(Callback) : void
     +{static} Configure(const Config&) : expected<void, Error>
     +{static} Read(span<uint8_t>) : size_t
     +{static} Available() : size_t
-    +{static} Write(span<const uint8_t>) : expected<size_t, Error>
+    +{static} Write(span<const uint8_t>) : expected<void, Error>
     +{static} IsTxBusy() : bool
     +{static} HandleIrq() : void
     -{static} UpdateRxHead() : Event
+    -{static} StartTx() : void
     -{static} OnRxDma(void*, dma::Event) : void
     -{static} OnTxDma(void*, dma::Event) : void
   }
@@ -136,6 +160,7 @@ Usart ..> Brr : Configure()
 Usart ..> Regs : registers
 Usart ..> DmaStream : RX circular / TX normal
 Usart ..> Gpio : Init()
+Usart *-- Ring : tx_ring_
 Usart o-- Callback
 Usart ..> Config
 Usart ..> Event

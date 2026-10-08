@@ -31,7 +31,7 @@ function(groov_add_optimized_objects name)
   add_library(${name} OBJECT ${ARG_SOURCES})
   target_include_directories(
     ${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app/include")
-  target_link_libraries(${name} PRIVATE stm32cubemx groov_baremetal)
+  target_link_libraries(${name} PRIVATE stm32cubemx groov_baremetal shared_headers)
   target_compile_options(${name} PRIVATE "$<$<CONFIG:Debug>:-O1;-g1>")
   set_target_properties(${name} PROPERTIES JOB_POOL_COMPILE groov_compile)
 endfunction()

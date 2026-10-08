@@ -16,8 +16,13 @@
 namespace uart {
 
 // Blocking ThreadX front end for Usart<Port>. Writers are serialized by one
-// mutex and readers by another; Configure() takes both. Driver events wake
-// the waiting threads through an event flags group.
+// mutex, so a Write() larger than the driver's kMaxWriteSize still comes out
+// in one piece, and readers by another; Configure() takes both. Driver events
+// wake the waiting threads through an event flags group.
+//
+// Usart<Port>::Write() stays available for code that must not block (e.g. a
+// logger called from interrupts); its records interleave with the chunks of
+// a Write() here, never split them.
 //
 //   uart::ThreadxSerial<uart::Usart3Vcp> serial;
 //   serial.Create("vcp");
@@ -68,40 +73,45 @@ class ThreadxSerial {
     return result;
   }
 
-  // Sends all of `data`, in chunks of the port's TX staging buffer. Fails
-  // with kTimeout if one chunk does not complete within `timeout` ticks.
+  // Queues all of `data` in chunks of at most Driver::kMaxWriteSize bytes and
+  // returns once it is queued, not sent. While the queue is full, waits for
+  // a batch to complete; fails with kTimeout if one wait exceeds `timeout`
+  // ticks, after the chunks queued so far. TX DMA errors are reported
+  // through TakeErrors().
   std::expected<std::size_t, Error> Write(std::span<const std::uint8_t> data,
                                           ULONG timeout) noexcept {
     if (tx_mutex_get(&tx_mutex_, timeout) != TX_SUCCESS) {
       return std::unexpected(Error::kTimeout);
     }
-    std::size_t sent = 0;
+    std::size_t queued = 0;
     std::expected<std::size_t, Error> result = 0;
-    while (sent < data.size()) {
-      tx_event_flags_set(&flags_, ~kTxDoneFlag, TX_AND);
-      tx_dma_error_.store(false);
-      auto accepted = Driver::Write(data.subspan(sent));
-      if (!accepted) {
-        result = std::unexpected(accepted.error());
+    while (queued < data.size()) {
+      const auto chunk = data.subspan(
+          queued, std::min(data.size() - queued, Driver::kMaxWriteSize));
+      // Cleared before trying, so space freed after a failed attempt still
+      // ends the wait below.
+      tx_event_flags_set(&flags_, ~kTxSpaceFlag, TX_AND);
+      const auto written = Driver::Write(chunk);
+      if (written) {
+        queued += chunk.size();
+        continue;
+      }
+      if (written.error() != Error::kNoSpace) {
+        result = std::unexpected(written.error());
         break;
       }
       ULONG actual = 0;
-      if (tx_event_flags_get(&flags_, kTxDoneFlag, TX_OR_CLEAR, &actual,
+      if (tx_event_flags_get(&flags_, kTxSpaceFlag, TX_OR_CLEAR, &actual,
                              timeout) != TX_SUCCESS) {
         result = std::unexpected(Error::kTimeout);
         break;
       }
-      if (tx_dma_error_.exchange(false)) {
-        result = std::unexpected(Error::kDma);
-        break;
-      }
-      sent += *accepted;
     }
     tx_mutex_put(&tx_mutex_);
     if (!result) {
       return result;
     }
-    return sent;
+    return queued;
   }
 
   // Returns as soon as at least one byte is available, up to data.size().
@@ -138,7 +148,7 @@ class ThreadxSerial {
 
  private:
   static constexpr ULONG kRxDataFlag = 1U << 0;
-  static constexpr ULONG kTxDoneFlag = 1U << 1;
+  static constexpr ULONG kTxSpaceFlag = 1U << 1;
 
   static void OnEvent(void* context, Event events) noexcept {
     auto& self = *static_cast<ThreadxSerial*>(context);
@@ -151,12 +161,9 @@ class ThreadxSerial {
     if (Any(events & Event::kRxData)) {
       flags |= kRxDataFlag;
     }
-    if (Any(events & Event::kTxDmaError)) {
-      // The aborted transfer also ends the writer's wait.
-      self.tx_dma_error_.store(true);
-    }
+    // A batch freed its queue space, whether it was sent or dropped.
     if (Any(events & (Event::kTxComplete | Event::kTxDmaError))) {
-      flags |= kTxDoneFlag;
+      flags |= kTxSpaceFlag;
     }
     if (flags != 0) {
       tx_event_flags_set(&self.flags_, flags, TX_OR);
@@ -167,7 +174,6 @@ class ThreadxSerial {
   TX_MUTEX rx_mutex_{};
   TX_EVENT_FLAGS_GROUP flags_{};
   std::atomic<std::uint16_t> errors_{0};
-  std::atomic<bool> tx_dma_error_{false};
   bool created_ = false;
 };
 

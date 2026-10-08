@@ -1,34 +1,63 @@
 @startuml usart_tx_configure_sequence
-title USART TX and runtime reconfiguration from the web UI
+title USART TX queue, batched DMA transmission and runtime reconfiguration
 autonumber
 
 participant "Writer thread" as W
+participant "Any ISR\n(e.g. logger)" as I
 participant "HTTP thread\nUartConfigService" as H
 participant "ThreadxSerial<Port>" as S
 participant "Usart<Port>" as U
+participant "tx_ring_\nring::MpscRing" as R
+participant "USARTx_IRQHandler\n(port priority)" as UI
 participant "TxDma\nStream<kDma1, 1>" as D
-participant "USART3 HW" as HW
-participant "DMA1_Stream1_IRQHandler" as DI
+participant "DMA1_Stream1_IRQHandler\n(port priority)" as DI
 
-== Write ==
+== Write from a thread (blocking front end) ==
 W -> S : Write(data, timeout)
 S -> S : tx_mutex_get(tx_mutex_)
-loop until all bytes sent
-  S -> S : clear kTxDoneFlag
-  S -> U : Write(remaining data)
-  U -> U : tx_busy_ = true\ncopy up to kTxBufferSize bytes to TxBuffer()
-  U -> D : Start(&TDR, TxBuffer(), n)
-  U --> S : n
-  S -> S : tx_event_flags_get(kTxDoneFlag)
-  D -> HW : bytes
-  D -> DI : TC (or TE / DME)
-  DI -> U : OnTxDma(events)
-  U -> U : tx_busy_ = false
-  U -> S : callback(kTxComplete or kTxDmaError)
-  S -> S : tx_event_flags_set(kTxDoneFlag)
+loop for each chunk of <= kMaxWriteSize bytes
+  S -> S : clear kTxSpaceFlag
+  S -> U : Write(chunk)
+  U -> R : TryWrite(chunk)\nCAS reserve, memcpy, stamp (release)
+  alt queued
+    U -> U : tx_in_flight_ ?
+    opt no transfer running
+      U -> UI : NVIC_SetPendingIRQ(USARTx_IRQn)
+    end
+    U --> S : ok
+  else kNoSpace
+    U --> S : kNoSpace
+    S -> S : tx_event_flags_get(kTxSpaceFlag, timeout)
+  end
 end
 S -> S : tx_mutex_put(tx_mutex_)
-S --> W : expected<size_t>(total)
+S --> W : expected<size_t>(queued)
+
+== Write from an interrupt (lock-free core) ==
+I -> U : Write(record)
+U -> R : TryWrite(record)
+note right of R
+  A record reserved by a preempted writer
+  is not stamped yet: Peek() stops there and
+  later records wait, so the order is kept.
+  Nobody spins.
+end note
+U --> I : ok / kNoSpace (drop)
+
+== Drain (only at the port's interrupt priority) ==
+UI -> U : HandleIrq()
+U -> U : RX flags (IDLE, errors)
+U -> U : StartTx()
+U -> R : Peek()\ncommitted, contiguous records at the tail
+U -> U : tx_batch_ = batch, tx_in_flight_ = true
+U -> D : Start(&TDR, batch.data, batch.size)
+D -> DI : TC (or TE / DME)
+DI -> U : OnTxDma(events)
+U -> R : Release(tx_batch_)
+U -> U : tx_in_flight_ = false
+U -> S : callback(kTxComplete or kTxDmaError)
+S -> S : tx_event_flags_set(kTxSpaceFlag)
+U -> U : StartTx()  (next batch, if any)
 
 == Configure (web UI POST /api/uart/config) ==
 H -> H : validate() (enum ranges), find binding for port_id
@@ -36,13 +65,15 @@ H -> S : binding.apply -> Configure(uart::Config)
 S -> S : get tx_mutex_, then rx_mutex_\n(waits for running Write / Read)
 S -> U : Configure(config)
 U -> U : ComputeBrr(KernelClockHz(), baud, oversampling)\nIsValid() (RTS/CTS pins)
+U -> U : tx_paused_ = true\nwait for the running batch\n(abort if NDTR stops moving)
 U -> D : TxDma::Stop(), RxDma::Stop()
-U -> HW : wait ISR.TC, CR1.UE = 0
-U -> HW : write CR1, CR2, CR3, BRR, PRESC
+U -> R : Release(tx_batch_) if still in flight (dropped)
+U -> U : wait ISR.TC, CR1.UE = 0\nwrite CR1, CR2, CR3, BRR, PRESC
 U -> D : Configure TX / RX streams, SetCallback
-U -> U : reset ring (rx_head_ = rx_tail_ = 0)
-U -> D : RxDma::Start(&RDR, RxBuffer(), size)
-U -> HW : ICR clear, CR1.UE = 1
+U -> U : reset RX ring, RxDma::Start(&RDR, RxBuffer(), size)
+U -> U : ICR clear, CR1.UE = 1
+U -> U : tx_paused_ = false
+U -> UI : NVIC_SetPendingIRQ (send what was queued meanwhile)
 U --> S : expected<void>
 S -> S : release rx_mutex_, tx_mutex_
 S --> H : expected<void>

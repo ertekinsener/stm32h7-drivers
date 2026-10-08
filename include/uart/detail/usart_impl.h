@@ -80,7 +80,10 @@ template <PortDescriptor Port>
 void Usart<Port>::Init() noexcept {
   Traits::EnableClock();
 
-  hal::ConfigureAlternate(Port::kTx, hal::Pull::kNone, hal::Speed::kMedium);
+  // The pull-up holds TX idle (high) while the transmitter is disabled (before
+  // Configure() and while it reconfigures), when the USART does not drive
+  // the pin; a floating line shows up as garbage at the terminal.
+  hal::ConfigureAlternate(Port::kTx, hal::Pull::kUp, hal::Speed::kMedium);
   // The pull-up keeps an unconnected RX line idle instead of floating.
   hal::ConfigureAlternate(Port::kRx, hal::Pull::kUp, hal::Speed::kMedium);
   if constexpr (Port::kRts.has_value()) {
@@ -98,6 +101,8 @@ void Usart<Port>::Init() noexcept {
                    NVIC_EncodePriority(NVIC_GetPriorityGrouping(),
                                        Port::kIrqPriority, 0));
   NVIC_EnableIRQ(Traits::kIrq);
+
+  tx_ring_.Attach(Port::TxBuffer().template first<Port::kTxBufferSize>());
 }
 
 template <PortDescriptor Port>
@@ -111,9 +116,27 @@ std::expected<void, Error> Usart<Port>::Configure(
     return std::unexpected(Error::kInvalidConfig);
   }
 
+  // Hold back new TX batches and let the running one finish with the old
+  // settings, unless it stalls (e.g. CTS held off).
+  tx_paused_.store(true);
+  std::uint16_t remaining = Port::TxDma::Remaining();
+  for (std::uint32_t stalled = 0;
+       tx_in_flight_.load() && stalled < detail::kTxDrainTimeout;) {
+    const std::uint16_t now = Port::TxDma::Remaining();
+    stalled = now == remaining ? stalled + 1 : 0;
+    remaining = now;
+  }
+
   // Stop both directions and let the last frame leave the shift register.
   if (!Port::TxDma::Stop() || !Port::RxDma::Stop()) {
     return std::unexpected(Error::kDma);
+  }
+  // A batch aborted by Stop() may or may not have raised its completion
+  // interrupt before Stop() cleared the flags. If it did not, the TX
+  // handlers can no longer run, so the batch is dropped here.
+  if (tx_in_flight_.load()) {
+    tx_ring_.Release(tx_batch_);
+    tx_in_flight_.store(false);
   }
   const bool enabled = groov::sync_read(P::kGroup / P::template kCr1<"ue">);
   if (enabled) {
@@ -195,7 +218,6 @@ std::expected<void, Error> Usart<Port>::Configure(
   rx_head_.store(0, std::memory_order_relaxed);
   rx_tail_.store(0, std::memory_order_relaxed);
   rx_dma_position_ = 0;
-  tx_busy_.store(false, std::memory_order_relaxed);
 
   const std::span<std::uint8_t> ring = Port::RxBuffer();
   if (!Port::RxDma::Start(Traits::kBase + detail::kRdrOffset,
@@ -210,6 +232,10 @@ std::expected<void, Error> Usart<Port>::Configure(
       P::template kIcr<"ncf"> = true, P::template kIcr<"fecf"> = true,
       P::template kIcr<"pecf"> = true, P::template kIcr<"tccf"> = true));
   groov::sync_write(P::kGroup(P::template kCr1<"ue"> = true));
+
+  // Resume TX; HandleIrq() sends whatever was queued meanwhile.
+  tx_paused_.store(false);
+  NVIC_SetPendingIRQ(Traits::kIrq);
   return {};
 }
 
@@ -243,33 +269,54 @@ std::size_t Usart<Port>::Available() noexcept {
 }
 
 template <PortDescriptor Port>
-std::expected<std::size_t, Error> Usart<Port>::Write(
+std::expected<void, Error> Usart<Port>::Write(
     std::span<const std::uint8_t> data) noexcept {
   if (data.empty()) {
-    return 0;
+    return {};
   }
-  bool idle = false;
-  if (!tx_busy_.compare_exchange_strong(idle, true,
-                                        std::memory_order_acquire)) {
-    return std::unexpected(Error::kBusy);
+  if (data.size() > kMaxWriteSize) {
+    return std::unexpected(Error::kTooLarge);
   }
-
-  const std::span<std::uint8_t> staging = Port::TxBuffer();
-  const std::size_t count = std::min(data.size(), staging.size());
-  std::memcpy(staging.data(), data.data(), count);
-
-  if (!Port::TxDma::Start(Traits::kBase + detail::kTdrOffset,
-                          reinterpret_cast<std::uintptr_t>(staging.data()),
-                          static_cast<std::uint16_t>(count))) {
-    tx_busy_.store(false, std::memory_order_release);
-    return std::unexpected(Error::kDma);
+  if (!tx_ring_.TryWrite(data)) {
+    return std::unexpected(Error::kNoSpace);
   }
-  return count;
+  // A running batch picks the record up from its completion handler. The
+  // record is committed before the flag is read (both sequentially
+  // consistent), so either that handler sees it or this write pends the
+  // drain itself.
+  if (!tx_in_flight_.load()) {
+    NVIC_SetPendingIRQ(Traits::kIrq);
+  }
+  return {};
 }
 
 template <PortDescriptor Port>
 bool Usart<Port>::IsTxBusy() noexcept {
-  return tx_busy_.load(std::memory_order_acquire);
+  return tx_in_flight_.load() || !tx_ring_.IsEmpty();
+}
+
+// Sends the committed records at the head of the TX queue in one transfer.
+// Runs only at the port's interrupt priority (HandleIrq() and OnTxDma()), so
+// it never preempts itself.
+template <PortDescriptor Port>
+void Usart<Port>::StartTx() noexcept {
+  if (tx_paused_.load() || tx_in_flight_.load()) {
+    return;
+  }
+  const auto batch = tx_ring_.Peek();
+  if (!batch) {
+    return;
+  }
+  tx_batch_ = *batch;
+  tx_in_flight_.store(true);
+  if (!Port::TxDma::Start(
+          Traits::kBase + detail::kTdrOffset,
+          reinterpret_cast<std::uintptr_t>(batch->bytes.data()),
+          static_cast<std::uint16_t>(batch->bytes.size()))) {
+    tx_ring_.Release(*batch);
+    tx_in_flight_.store(false);
+    callback_(Event::kTxDmaError);
+  }
 }
 
 template <PortDescriptor Port>
@@ -300,6 +347,8 @@ void Usart<Port>::HandleIrq() noexcept {
   if (Any(events)) {
     callback_(events);
   }
+  // Write() pends this interrupt to start a transfer.
+  StartTx();
 }
 
 // Advances rx_head_ to the DMA write position. Runs on IDLE, half-transfer
@@ -344,11 +393,15 @@ void Usart<Port>::OnRxDma(void* /*context*/, dma::Event events) noexcept {
 
 template <PortDescriptor Port>
 void Usart<Port>::OnTxDma(void* /*context*/, dma::Event events) noexcept {
-  const Event result = dma::Any(events & dma::kErrorEvents)
-                           ? Event::kTxDmaError
-                           : Event::kTxComplete;
-  tx_busy_.store(false, std::memory_order_release);
-  callback_(result);
+  // Also raised when Configure() stops a running transfer.
+  if (!tx_in_flight_.load()) {
+    return;
+  }
+  tx_ring_.Release(tx_batch_);
+  tx_in_flight_.store(false);
+  callback_(dma::Any(events & dma::kErrorEvents) ? Event::kTxDmaError
+                                                 : Event::kTxComplete);
+  StartTx();
 }
 
 }  // namespace uart

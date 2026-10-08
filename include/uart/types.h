@@ -50,14 +50,14 @@ struct Config {
 enum class Event : std::uint16_t {
   kNone = 0,
   kRxData = 1U << 0,
-  kTxComplete = 1U << 1,
+  kTxComplete = 1U << 1,  // A TX batch was sent; queue space was freed.
   kOverrun = 1U << 2,            // Hardware: RDR overwritten (ORE).
   kRxBufferOverflow = 1U << 3,   // Software: ring buffer lapped the reader.
   kFramingError = 1U << 4,
   kParityError = 1U << 5,
   kNoise = 1U << 6,
   kRxDmaError = 1U << 7,  // Reception stopped; Configure() restarts it.
-  kTxDmaError = 1U << 8,  // The current Write() transfer was aborted.
+  kTxDmaError = 1U << 8,  // A TX batch was aborted and its data dropped.
 };
 
 constexpr Event operator|(Event lhs, Event rhs) noexcept {
@@ -79,7 +79,8 @@ inline constexpr Event kLineErrors = Event::kOverrun | Event::kFramingError |
 
 enum class Error : std::uint8_t {
   kInvalidConfig,
-  kBusy,
+  kNoSpace,   // The TX queue is full.
+  kTooLarge,  // A single Write() above Usart<Port>::kMaxWriteSize.
   kTimeout,
   kDma,
   kRtos,
