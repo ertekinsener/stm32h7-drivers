@@ -148,7 +148,7 @@ package "webserver" {
   }
   class UartConfigService {
     -ports_ : span<const UartPortBinding>
-    +set_config(const UartConfig&) : bool
+    +SetConfig(const UartConfig&) : bool
   }
 }
 

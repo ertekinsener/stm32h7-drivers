@@ -60,7 +60,7 @@ S -> S : tx_event_flags_set(kTxSpaceFlag)
 U -> U : StartTx()  (next batch, if any)
 
 == Configure (web UI POST /api/uart/config) ==
-H -> H : validate() (enum ranges), find binding for port_id
+H -> H : verify FlatBuffer, IsInRange() (enum ranges),\nFindPort(port_id)
 H -> S : binding.apply -> Configure(uart::Config)
 S -> S : get tx_mutex_, then rx_mutex_\n(waits for running Write / Read)
 S -> U : Configure(config)
@@ -77,5 +77,5 @@ U -> UI : NVIC_SetPendingIRQ (send what was queued meanwhile)
 U --> S : expected<void>
 S -> S : release rx_mutex_, tx_mutex_
 S --> H : expected<void>
-H --> H : 204 No Content (422 if rejected)
+H --> H : 204 No Content (400 malformed, 422 rejected)
 @enduml

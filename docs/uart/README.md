@@ -12,7 +12,7 @@ web UI configures as port id 3.
 ## Dependency graph
 
 ```
-                    user code / netxduo_app.cc
+                    user code / app/vcp.cc
                               |
                               v
                     uart/threadx_serial.h ---> tx_api.h (ThreadX)
@@ -93,8 +93,8 @@ To add a port:
 | `CM7/app/source/dma/dma_streams.cmake` | Uses `groov_add_optimized_objects()`. `DMA_COMPILE_JOBS` became `GROOV_COMPILE_JOBS`. |
 | `CM7/app/include/dma/types.h` | Missing DMAMUX requests: UART5, USART6, UART7, UART8. |
 | `webserver/uart_config_service.{h,cc}` | `UartPortBinding {port_id, apply, context}`. The service range-checks the decoded enums, finds the port and calls `apply`; it stores the config only if the hardware accepted it. |
-| `CM7/app/source/app/netxduo_app.cc` | Owns `ThreadxSerial<Usart3Vcp> vcp_serial`. `ToDriverConfig()` maps web UI settings to `uart::Config` (9 data bits and 0.5 stop bits are rejected). The port-3 binding calls `Configure()`. `NetxduoApp()` creates the port and applies 115200 8N1. |
-| `CM7/app/include/app/vcp.h` | New. `app::VcpSerial` and `app::Vcp()`, which give other code access to the VCP port owned by `netxduo_app.cc`. |
+| `CM7/app/source/app/vcp.cc`, `app/vcp.h` | Own `ThreadxSerial<Usart3Vcp>`; `app::InitVcp()` creates the port and applies 115200 8N1, `app::Vcp()` gives access to it. |
+| `CM7/app/source/app/netxduo_app.cc` | `ToDriverConfig()` maps web UI settings to `uart::Config` (9 data bits and 0.5 stop bits are rejected). The port-3 binding calls `app::Vcp().Configure()`. |
 | `CM7/app/source/app/app.cc` | Echo test in the main thread. `RunVcpEcho()` prints a banner, echoes everything received, and once a second prints any driver errors since the last check (`W cm7 uart: framing error`, `W cm7 uart: rx buffer overflow`, ...) through the logger. |
 | `CLAUDE.md` | USART section and build notes. |
 
