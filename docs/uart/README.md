@@ -111,7 +111,7 @@ To add a port:
 | `webserver/include/webserver/uart/` (now platform-independent, see `webserver/README.md`) | `UartPort {id, name, description, capabilities, driver, config}`. `UartService` checks the decoded settings against the port's capabilities, calls `driver.apply` and stores the config only if the hardware accepted it. |
 | `CM7/app/source/app/vcp.cc`, `app/vcp.h` | Own `ThreadxSerial<Usart3Vcp>`; `app::InitVcp()` creates the port and applies 115200 8N1, `app::Vcp()` gives access to it. |
 | `CM7/app/source/app/uart_ports.cc`, `app/uart_ports.h` | Own the bridge ports (`app::BridgeSerials`, a tuple of `ThreadxSerial`s); `app::InitBridgePorts()` creates them all and applies `app::kVcpConfig`. |
-| `CM7/app/source/app/uart_periodic_test.cc` | Test only (CMake option `CM7_UART_PERIODIC_TEST`, ON by default): a thread writes `<port> test <n>` to every bridge port once a second. |
+| `CM7/app/source/app/uart_periodic_test.cc` | Test only (CMake option `CM7_UART_PERIODIC_TEST`, now OFF by default: its lines would mix into the Ethernet-UART bridge's data): a thread writes `<port> test <n>` to every bridge port once a second. |
 | `CM7/app/source/app/web_uart_ports.cc` | All eight ports for the web UI (id = U(S)ART number). `ToDriverConfig()` maps web UI settings to `uart::Config`; capabilities come from the port descriptor (flow control only with RTS/CTS pins) and the kernel clock (baud range). |
 | `CM7/app/source/app/app.cc` | Echo test in the main thread. `RunVcpEcho()` prints a banner, echoes everything received, and once a second prints any driver errors since the last check (`W cm7 uart: framing error`, `W cm7 uart: rx buffer overflow`, ...) through the logger. |
 | `CLAUDE.md` | USART section and build notes. |

@@ -146,6 +146,13 @@ class ThreadxSerial {
     return static_cast<Event>(errors_.exchange(0));
   }
 
+  // Also passes every driver event to `listener` (interrupt context), e.g.
+  // to wake a thread that serves several ports. `listener` must outlive the
+  // port; nullptr removes it.
+  void SetListener(const Callback* listener) noexcept {
+    listener_.store(listener, std::memory_order_release);
+  }
+
  private:
   static constexpr ULONG kRxDataFlag = 1U << 0;
   static constexpr ULONG kTxSpaceFlag = 1U << 1;
@@ -168,12 +175,17 @@ class ThreadxSerial {
     if (flags != 0) {
       tx_event_flags_set(&self.flags_, flags, TX_OR);
     }
+    if (const Callback* listener =
+            self.listener_.load(std::memory_order_acquire)) {
+      (*listener)(events);
+    }
   }
 
   TX_MUTEX tx_mutex_{};
   TX_MUTEX rx_mutex_{};
   TX_EVENT_FLAGS_GROUP flags_{};
   std::atomic<std::uint16_t> errors_{0};
+  std::atomic<const Callback*> listener_{nullptr};
   bool created_ = false;
 };
 
