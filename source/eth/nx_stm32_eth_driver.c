@@ -84,6 +84,7 @@ static UINT         _nx_driver_hardware_initialize(NX_IP_DRIVER *driver_req_ptr)
 static UINT         _nx_driver_hardware_enable(NX_IP_DRIVER *driver_req_ptr);
 static UINT         _nx_driver_hardware_disable(NX_IP_DRIVER *driver_req_ptr);
 static UINT         _nx_driver_hardware_packet_send(NX_PACKET *packet_ptr);
+static HAL_StatusTypeDef _nx_driver_transmit(ETH_TxPacketConfigTypeDef *config);
 #ifdef MULTI_QUEUE_FEATURE
 static UINT         _nx_driver_hardware_packet_send_distribute(NX_PACKET *packet_ptr, UINT queue_number);
 #endif
@@ -2003,7 +2004,7 @@ static UINT  _nx_driver_hardware_packet_send_distribute(NX_PACKET *packet_ptr, U
   TxPacketCfg.TxBuffer = Txbuffer;
   TxPacketCfg.pData = (uint32_t *)packet_ptr;
 
-  if(HAL_ETH_Transmit_IT(&eth_handle, &TxPacketCfg) != HAL_OK)
+  if(_nx_driver_transmit(&TxPacketCfg) != HAL_OK)
     return NX_DRIVER_ERROR;
 
   return  NX_SUCCESS;
@@ -2066,7 +2067,7 @@ static UINT  _nx_driver_hardware_packet_send(NX_PACKET *packet_ptr)
   TxPacketCfg.TxBuffer = Txbuffer;
   TxPacketCfg.pData = (uint32_t *)packet_ptr;
 
-  if(HAL_ETH_Transmit_IT(&eth_handle, &TxPacketCfg))
+  if(_nx_driver_transmit(&TxPacketCfg) != HAL_OK)
   {
     return(NX_DRIVER_ERROR);
   }
@@ -2189,6 +2190,33 @@ static UINT  _nx_driver_hardware_multicast_leave(NX_IP_DRIVER *driver_req_ptr)
   return(NX_SUCCESS);
 }
 
+
+/* Longest wait for a free TX descriptor before a packet is dropped. */
+#define NX_DRIVER_TX_RETRY_MS  2U
+
+/* Queues a packet for transmission. When every TX descriptor is in use, the
+   sent ones are reclaimed here and the transmit is retried while the DMA
+   drains the ring. They are otherwise reclaimed only by the deferred
+   processing in the IP thread, which cannot run while the sending thread
+   holds the IP mutex for a burst of TCP segments: with ETH_TX_DESC_CNT = 4
+   the fifth segment of a burst was dropped, and TCP stalled for a
+   retransmission timeout (1-2 s per web page asset). Both paths run under
+   the IP mutex, so HAL_ETH_ReleaseTxPacket() is not called concurrently. */
+static HAL_StatusTypeDef _nx_driver_transmit(ETH_TxPacketConfigTypeDef *config)
+{
+  uint32_t tickstart = HAL_GetTick();
+  HAL_StatusTypeDef status;
+
+  while ((status = HAL_ETH_Transmit_IT(&eth_handle, config)) != HAL_OK)
+  {
+    if ((HAL_GetTick() - tickstart) > NX_DRIVER_TX_RETRY_MS)
+    {
+      break;
+    }
+    HAL_ETH_ReleaseTxPacket(&eth_handle);
+  }
+  return status;
+}
 
 /**************************************************************************/
 /*                                                                        */
