@@ -5,9 +5,24 @@ access and the DMA driver (`docs/dma/README.md`) for transfers, and handles
 interrupts. Reception runs continuously through circular DMA with IDLE-line
 detection. Transmission is queued in a lock-free multi-producer ring
 (`ring::MpscRing`): `Write()` works from any context, including interrupts, and
-the driver sends every committed record in one DMA transfer. Today one port
-is instantiated: USART3 on the ST-LINK virtual COM port (PD8/PD9), which the
-web UI configures as port id 3.
+the driver sends every committed record in one DMA transfer. All eight
+U(S)ARTs are instantiated: USART3 on the ST-LINK virtual COM port (PD8/PD9),
+which the web UI configures as port id 3, and seven Ethernet-UART bridge ports
+(`app/uart_ports.h`, started with the VCP settings, 115200 8N1):
+
+| Port | TX | RX | RX / TX DMA |
+|---|---|---|---|
+| USART3 (VCP) | PD8 | PD9 | DMA1 S0 / S1 |
+| USART1 | PB6 | PB7 | DMA1 S2 / S3 |
+| USART2 | PD5 | PD6 | DMA1 S4 / S5 |
+| UART4 | PC10 | PC11 | DMA1 S6 / S7 |
+| UART5 | PC12 | PD2 | DMA2 S0 / S1 |
+| USART6 | PC6 | PC7 | DMA2 S2 / S3 |
+| UART7 | PE8 | PE7 | DMA2 S4 / S5 |
+| UART8 | PE1 | PE0 | DMA2 S6 / S7 |
+
+PE1 also drives the user LED LD2, so it flickers with UART8 TX. These use all
+16 DMA1/DMA2 streams.
 
 ## Dependency graph
 
@@ -76,6 +91,7 @@ translation units.
 | File | Purpose |
 |---|---|
 | `usart3_vcp.cc` | The VCP port's `DMA_BUFFER` RX ring and TX queue storage, `RxBuffer()`/`TxBuffer()`, `template class Usart<Usart3Vcp>;` and `extern "C" USART3_IRQHandler()`. Listed in `uart_port_sources` and built as the `uart_ports` object library by `groov_add_optimized_objects()` (`-O1 -g1` in Debug). |
+| `<port>_port.cc` | The same for each bridge port (`usart1_port.cc`, ..., `uart8_port.cc`). |
 | `uart_checks.cc` | `static_assert`s: instance traits against CMSIS (base, IRQn, DMA requests, clock domain) and `ComputeBrr()` (115200 → 868 and 921600 → 109 with OVER16; 921600 → 0xD4 with OVER8; out-of-range rates rejected). No runtime code. |
 
 To add a port:
@@ -94,6 +110,8 @@ To add a port:
 | `CM7/app/include/dma/types.h` | Missing DMAMUX requests: UART5, USART6, UART7, UART8. |
 | `webserver/uart_config_service.{h,cc}` | `UartPortBinding {port_id, apply, context}`. The service range-checks the decoded enums, finds the port and calls `apply`; it stores the config only if the hardware accepted it. |
 | `CM7/app/source/app/vcp.cc`, `app/vcp.h` | Own `ThreadxSerial<Usart3Vcp>`; `app::InitVcp()` creates the port and applies 115200 8N1, `app::Vcp()` gives access to it. |
+| `CM7/app/source/app/uart_ports.cc`, `app/uart_ports.h` | Own the bridge ports (`app::BridgeSerials`, a tuple of `ThreadxSerial`s); `app::InitBridgePorts()` creates them all and applies `app::kVcpConfig`. |
+| `CM7/app/source/app/uart_periodic_test.cc` | Test only (CMake option `CM7_UART_PERIODIC_TEST`, ON by default): a thread writes `<port> test <n>` to every bridge port once a second. |
 | `CM7/app/source/app/netxduo_app.cc` | `ToDriverConfig()` maps web UI settings to `uart::Config` (9 data bits and 0.5 stop bits are rejected). The port-3 binding calls `app::Vcp().Configure()`. |
 | `CM7/app/source/app/app.cc` | Echo test in the main thread. `RunVcpEcho()` prints a banner, echoes everything received, and once a second prints any driver errors since the last check (`W cm7 uart: framing error`, `W cm7 uart: rx buffer overflow`, ...) through the logger. |
 | `CLAUDE.md` | USART section and build notes. |
@@ -121,6 +139,13 @@ The main thread runs an echo test on the VCP (`RunVcpEcho()` in `app.cc`).
 4. Change the settings on the web UI (port 3), for example 921600 with
    oversampling by 8, or even parity. Reconnect the terminal with the same
    settings, and the echo works again. Unsupported settings return HTTP 422.
+
+### Bridge ports
+
+With `CM7_UART_PERIODIC_TEST` on, connect a 3.3 V USB-serial adapter (adapter
+RX to the port's TX pin, common GND) at 115200 8N1: each port prints
+`USART1 test 0`, `USART1 test 1`, ... once a second. Turn the option off to
+remove the test.
 
 ### TX queue stress test
 
