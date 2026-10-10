@@ -4,7 +4,7 @@ autonumber
 
 participant "Writer thread" as W
 participant "Any ISR\n(e.g. logger)" as I
-participant "HTTP thread\nUartConfigService" as H
+participant "HTTP thread\nUartService" as H
 participant "ThreadxSerial<Port>" as S
 participant "Usart<Port>" as U
 participant "tx_ring_\nring::MpscRing" as R

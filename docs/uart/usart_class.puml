@@ -140,17 +140,20 @@ package "uart" {
   }
 }
 
-package "webserver" {
-  class UartPortBinding <<struct>> {
-    +port_id : uint8_t
-    +apply : bool (*)(void*, const UartConfig&) noexcept
-    +context : void*
+package "webserver (portable, see docs/webserver)" {
+  class UartPort <<struct>> {
+    +id : uint8_t
+    +capabilities : UartCapabilities
+    +driver : UartPortDriver {apply, context}
+    +config : UartConfig
   }
-  class UartConfigService {
-    -ports_ : span<const UartPortBinding>
-    +SetConfig(const UartConfig&) : bool
+  class UartService {
+    -ports_ : span<UartPort>
+    +Apply(const UartConfig&) : expected<void, UartError>
   }
 }
+
+class "app::web_uart_ports.cc\nMakePort<Port>()" as WebPorts
 
 class "usart3_vcp.cc\nUSART3_IRQHandler()" as Irq <<extern C>>
 
@@ -168,7 +171,8 @@ Usart3Vcp ..> Pin
 Regs ..> WordMmioBus : bus
 Serial ..> Usart : uses
 Serial ..> Callback : provides
-UartConfigService o-- UartPortBinding
-UartPortBinding ..> Serial : apply -> Configure()
+UartService o-- UartPort
+WebPorts ..> UartPort : fills (capabilities from Port)
+UartPort ..> Serial : apply -> Configure()
 Irq ..> Usart : HandleIrq()
 @enduml
