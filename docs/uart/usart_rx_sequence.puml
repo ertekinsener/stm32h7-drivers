@@ -42,7 +42,7 @@ S -> S : tx_event_flags_set(kRxDataFlag)
 deactivate S
 
 S -> U : Read(buffer)
-U -> U : if lapped: tail = head - size\ncopy [tail, head) from ring (wraps)\nrx_tail_ = tail + n
+U -> U : if lapped: tail = head - size\ncopy [tail, head) from ring (wraps)\nDmaHead() (PRIMASK): drop bytes the DMA\noverwrote meanwhile, then kRxBufferOverflow\nrx_tail_ = tail + n
 U --> S : n bytes
 S -> S : tx_mutex_put(rx_mutex_)
 S --> T : expected<size_t>(n)

@@ -194,6 +194,11 @@ appear). Switch back with `-DCM7_TX_STRESS_TEST=OFF`.
 - **Buffer sizing:** the RX ring must hold everything that arrives between two
   `Read()` calls. At 115200 baud (~11.5 KB/s), 512 B covers about 44 ms.
   Overflows are reported as `kRxBufferOverflow`; the oldest data is dropped.
+  `rx_head_` advances only on IDLE/HT/TC, so the DMA may already be up to
+  half a ring further and overwriting the oldest bytes: `Read()` checks the
+  live DMA position (`DmaHead()`, under PRIMASK) after copying, skips what
+  was overwritten and reports `kRxBufferOverflow` itself, so no overwritten
+  byte is handed out as data.
 - **TX queue sizing:** the queue must absorb output bursts. At 115200 baud the
   2 KiB queue drains in about 180 ms; `Usart::Write()` fails with `kNoSpace`
   beyond that, `ThreadxSerial::Write()` waits. The TX queue is for producers on

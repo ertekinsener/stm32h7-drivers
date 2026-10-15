@@ -91,7 +91,9 @@ class Usart {
   // call and stops if a later call fails after touching the hardware.
   static std::expected<void, Error> Configure(const Config& config) noexcept;
 
-  // Copies up to data.size() received bytes. Never blocks.
+  // Copies up to data.size() received bytes. Never blocks. Bytes the DMA
+  // overwrote before or while they were copied are skipped and reported to
+  // the callback as kRxBufferOverflow (from the caller's context).
   static std::size_t Read(std::span<std::uint8_t> data) noexcept;
 
   // Bytes received and not read yet (capped at the ring size).
@@ -112,6 +114,7 @@ class Usart {
 
  private:
   static Event UpdateRxHead() noexcept;
+  static std::uint32_t DmaHead() noexcept;
   static void StartTx() noexcept;
   static void OnRxDma(void* context, dma::Event events) noexcept;
   static void OnTxDma(void* context, dma::Event events) noexcept;

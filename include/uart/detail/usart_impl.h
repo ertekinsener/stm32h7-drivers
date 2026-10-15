@@ -246,19 +246,52 @@ std::size_t Usart<Port>::Read(std::span<std::uint8_t> data) noexcept {
 
   const std::uint32_t head = rx_head_.load(std::memory_order_acquire);
   std::uint32_t tail = rx_tail_.load(std::memory_order_relaxed);
+  bool lapped = false;
   if (head - tail > size) {
     tail = head - size;  // Lapped: the oldest data was overwritten.
+    lapped = true;
   }
 
-  const auto count = static_cast<std::uint32_t>(
+  auto count = static_cast<std::uint32_t>(
       std::min<std::size_t>(head - tail, data.size()));
   const std::uint32_t start = tail % size;
   const std::uint32_t first = std::min(count, size - start);
   std::memcpy(data.data(), ring.data() + start, first);
   std::memcpy(data.data() + first, ring.data(), count - first);
 
+  // rx_head_ lags the DMA by up to half a ring, and the DMA overwrites the
+  // oldest bytes from its own position on: only the `size` bytes before
+  // DmaHead() are still intact. Checked after copying, so that bytes
+  // overwritten during the copy are dropped as well.
+  const std::uint32_t oldest = DmaHead() - size;
+  if (static_cast<std::int32_t>(oldest - tail) > 0) {
+    const std::uint32_t lost = std::min(oldest - tail, count);
+    std::memmove(data.data(), data.data() + lost, count - lost);
+    count -= lost;
+    tail += lost;
+    lapped = true;
+  }
+
   rx_tail_.store(tail + count, std::memory_order_release);
+  if (lapped) {
+    callback_(Event::kRxBufferOverflow);
+  }
   return count;
+}
+
+// The logical ring index the DMA writes next: rx_head_ plus what the DMA
+// wrote since the last UpdateRxHead(). Interrupts are masked so that rx_head_
+// and rx_dma_position_ come from the same update.
+template <PortDescriptor Port>
+std::uint32_t Usart<Port>::DmaHead() noexcept {
+  const auto size = static_cast<std::uint32_t>(Port::kRxBufferSize);
+  const std::uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  const std::uint32_t position = (size - Port::RxDma::Remaining()) % size;
+  const std::uint32_t head = rx_head_.load(std::memory_order_relaxed) +
+                             (position + size - rx_dma_position_) % size;
+  __set_PRIMASK(primask);
+  return head;
 }
 
 template <PortDescriptor Port>
