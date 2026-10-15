@@ -8,6 +8,7 @@
 namespace hal {
 namespace {
 
+constexpr std::uint32_t kModeInput = 0b00;
 constexpr std::uint32_t kModeAlternate = 0b10;
 
 GPIO_TypeDef* Registers(Port port) noexcept {
@@ -16,13 +17,16 @@ GPIO_TypeDef* Registers(Port port) noexcept {
       GPIOA_BASE + std::to_underlying(port) * (GPIOB_BASE - GPIOA_BASE));
 }
 
+void EnableClock(Port port) noexcept {
+  const std::uint32_t port_bit = RCC_AHB4ENR_GPIOAEN << std::to_underlying(port);
+  SET_BIT(RCC->AHB4ENR, port_bit);
+  static_cast<void>(READ_BIT(RCC->AHB4ENR, port_bit));
+}
+
 }  // namespace
 
 void ConfigureAlternate(Pin pin, Pull pull, Speed speed) noexcept {
-  const std::uint32_t port_bit = RCC_AHB4ENR_GPIOAEN
-                                 << std::to_underlying(pin.port);
-  SET_BIT(RCC->AHB4ENR, port_bit);
-  static_cast<void>(READ_BIT(RCC->AHB4ENR, port_bit));
+  EnableClock(pin.port);
 
   GPIO_TypeDef* const gpio = Registers(pin.port);
   const std::uint32_t shift2 = pin.number * 2U;
@@ -36,6 +40,20 @@ void ConfigureAlternate(Pin pin, Pull pull, Speed speed) noexcept {
   MODIFY_REG(gpio->PUPDR, 0b11U << shift2,
              static_cast<std::uint32_t>(std::to_underlying(pull)) << shift2);
   MODIFY_REG(gpio->MODER, 0b11U << shift2, kModeAlternate << shift2);
+}
+
+void ConfigureInput(Pin pin, Pull pull) noexcept {
+  EnableClock(pin.port);
+
+  GPIO_TypeDef* const gpio = Registers(pin.port);
+  const std::uint32_t shift2 = pin.number * 2U;
+  MODIFY_REG(gpio->PUPDR, 0b11U << shift2,
+             static_cast<std::uint32_t>(std::to_underlying(pull)) << shift2);
+  MODIFY_REG(gpio->MODER, 0b11U << shift2, kModeInput << shift2);
+}
+
+bool Read(Pin pin) noexcept {
+  return READ_BIT(Registers(pin.port)->IDR, 1U << pin.number) != 0;
 }
 
 }  // namespace hal

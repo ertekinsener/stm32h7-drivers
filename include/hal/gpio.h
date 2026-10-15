@@ -29,6 +29,12 @@ struct Pin {
 // mode.
 void ConfigureAlternate(Pin pin, Pull pull, Speed speed) noexcept;
 
+// Enables the port clock and makes the pin an input (`alternate` unused).
+void ConfigureInput(Pin pin, Pull pull) noexcept;
+
+// The input level of the pin.
+bool Read(Pin pin) noexcept;
+
 }  // namespace hal
 
 #endif  // APP_INCLUDE_HAL_GPIO_
