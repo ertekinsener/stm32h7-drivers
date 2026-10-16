@@ -1,10 +1,10 @@
-#ifndef APP_INCLUDE_UART_DETAIL_USART_IMPL_
-#define APP_INCLUDE_UART_DETAIL_USART_IMPL_
+#ifndef STM32H7_DRIVERS_INCLUDE_UART_DETAIL_USART_IMPL_
+#define STM32H7_DRIVERS_INCLUDE_UART_DETAIL_USART_IMPL_
 
 // Definitions of uart::Usart members. Only the per-port translation units
-// (app/source/uart/<port>.cc) include this file: instantiating groov code is
-// expensive, so everything else uses the extern template declarations in
-// uart/ports.h.
+// (the application's <port>.cc, see docs/uart/README.md) include this file:
+// instantiating groov code is expensive, so everything else uses the extern
+// template declarations next to the application's port descriptors.
 
 #include <groov/groov.hpp>
 #include <stdx/ct_string.hpp>
@@ -439,4 +439,4 @@ void Usart<Port>::OnTxDma(void* /*context*/, dma::Event events) noexcept {
 
 }  // namespace uart
 
-#endif  // APP_INCLUDE_UART_DETAIL_USART_IMPL_
+#endif  // STM32H7_DRIVERS_INCLUDE_UART_DETAIL_USART_IMPL_

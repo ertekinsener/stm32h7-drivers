@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_UART_USART_
-#define APP_INCLUDE_UART_USART_
+#ifndef STM32H7_DRIVERS_INCLUDE_UART_USART_
+#define STM32H7_DRIVERS_INCLUDE_UART_USART_
 
 #include <algorithm>
 #include <atomic>
@@ -19,7 +19,8 @@
 
 namespace uart {
 
-// Compile-time description of one board port, see uart/ports.h.
+// Compile-time description of one board port (application code, see
+// docs/uart/README.md, "Ports of an application").
 template <typename P>
 concept PortDescriptor = requires {
   { P::kInstance } -> std::convertible_to<Instance>;
@@ -48,7 +49,7 @@ concept PortDescriptor = requires {
 // stream and never wait.
 //
 // The member functions are defined in uart/detail/usart_impl.h and explicitly
-// instantiated per port (app/source/uart/<port>.cc), which also defines the
+// instantiated per port (the application's <port>.cc), which also defines the
 // USARTx_IRQHandler. Those translation units are always optimized (groov).
 //
 // Write() is safe from any context on this core, including interrupts of any
@@ -137,4 +138,4 @@ class Usart {
 
 }  // namespace uart
 
-#endif  // APP_INCLUDE_UART_USART_
+#endif  // STM32H7_DRIVERS_INCLUDE_UART_USART_

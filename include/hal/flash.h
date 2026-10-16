@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_HAL_FLASH_
-#define APP_INCLUDE_HAL_FLASH_
+#ifndef STM32H7_DRIVERS_INCLUDE_HAL_FLASH_
+#define STM32H7_DRIVERS_INCLUDE_HAL_FLASH_
 
 #include <cstddef>
 #include <cstdint>
@@ -8,9 +8,9 @@
 namespace hal::flash {
 
 // Erase, program and ECC-safe reads of internal flash bank 2 (0x08100000,
-// eight 128 KiB sectors), for data the CM7 keeps there (the settings,
-// app/settings_storage.h). The CM7 runs from bank 1, so it keeps running
-// while bank 2 is busy; the CM4, which runs from bank 2, stalls meanwhile.
+// eight 128 KiB sectors), for data the CM7 keeps there (e.g. settings). On
+// the dual-core STM32H7 the CM7 runs from bank 1, so it keeps running while
+// bank 2 is busy; a CM4 running from bank 2 stalls meanwhile.
 // Plain CMSIS register access like hal/gpio.h. Not thread safe: one user.
 
 inline constexpr std::uintptr_t kBank2Base = 0x08100000;
@@ -41,4 +41,4 @@ bool ReadBank2(std::uintptr_t address, std::span<std::uint8_t> out) noexcept;
 
 }  // namespace hal::flash
 
-#endif  // APP_INCLUDE_HAL_FLASH_
+#endif  // STM32H7_DRIVERS_INCLUDE_HAL_FLASH_

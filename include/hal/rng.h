@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_HAL_RNG_
-#define APP_INCLUDE_HAL_RNG_
+#ifndef STM32H7_DRIVERS_INCLUDE_HAL_RNG_
+#define STM32H7_DRIVERS_INCLUDE_HAL_RNG_
 
 #include <cstdint>
 #include <span>
@@ -27,4 +27,4 @@ std::uint32_t Next() noexcept;
 
 }  // namespace hal::rng
 
-#endif  // APP_INCLUDE_HAL_RNG_
+#endif  // STM32H7_DRIVERS_INCLUDE_HAL_RNG_

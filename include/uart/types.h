@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_UART_TYPES_
-#define APP_INCLUDE_UART_TYPES_
+#ifndef STM32H7_DRIVERS_INCLUDE_UART_TYPES_
+#define STM32H7_DRIVERS_INCLUDE_UART_TYPES_
 
 #include <cstdint>
 #include <utility>
@@ -101,4 +101,4 @@ struct Callback {
 
 }  // namespace uart
 
-#endif  // APP_INCLUDE_UART_TYPES_
+#endif  // STM32H7_DRIVERS_INCLUDE_UART_TYPES_

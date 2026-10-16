@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_DMA_BUFFER_
-#define APP_INCLUDE_DMA_BUFFER_
+#ifndef STM32H7_DRIVERS_INCLUDE_DMA_BUFFER_
+#define STM32H7_DRIVERS_INCLUDE_DMA_BUFFER_
 
 #include <cstdint>
 
@@ -22,4 +22,4 @@ constexpr bool IsDmaReachable(std::uintptr_t address) noexcept {
 
 }  // namespace dma
 
-#endif  // APP_INCLUDE_DMA_BUFFER_
+#endif  // STM32H7_DRIVERS_INCLUDE_DMA_BUFFER_

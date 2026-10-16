@@ -1,8 +1,8 @@
-#ifndef APP_INCLUDE_DMA_DETAIL_STREAM_IMPL_
-#define APP_INCLUDE_DMA_DETAIL_STREAM_IMPL_
+#ifndef STM32H7_DRIVERS_INCLUDE_DMA_DETAIL_STREAM_IMPL_
+#define STM32H7_DRIVERS_INCLUDE_DMA_DETAIL_STREAM_IMPL_
 
 // Definitions of dma::Stream members. Only the generated per-stream
-// translation units (app/source/dma/stream_instance.cc.in) include this file:
+// translation units (cmake/stream_instance.cc.in) include this file:
 // instantiating it is expensive (~25 s and ~2 GB RAM per stream with groov),
 // so everything else uses the extern template declarations in dma/stream.h.
 
@@ -213,4 +213,4 @@ void Stream<C, N>::ClearFlags() noexcept {
 
 }  // namespace dma
 
-#endif  // APP_INCLUDE_DMA_DETAIL_STREAM_IMPL_
+#endif  // STM32H7_DRIVERS_INCLUDE_DMA_DETAIL_STREAM_IMPL_

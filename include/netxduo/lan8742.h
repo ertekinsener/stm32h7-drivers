@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_NETXDUO_LAN8742_
-#define APP_INCLUDE_NETXDUO_LAN8742_
+#ifndef STM32H7_DRIVERS_INCLUDE_NETXDUO_LAN8742_
+#define STM32H7_DRIVERS_INCLUDE_NETXDUO_LAN8742_
 
 #ifdef __cplusplus
  extern "C" {
@@ -408,4 +408,4 @@ int32_t LAN8742_GetITStatus(lan8742_Object_t *pObj, uint32_t Interrupt);
 #endif
 
 
-#endif /* APP_INCLUDE_NETXDUO_LAN8742_ */
+#endif /* STM32H7_DRIVERS_INCLUDE_NETXDUO_LAN8742_ */

@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_UART_THREADX_SERIAL_
-#define APP_INCLUDE_UART_THREADX_SERIAL_
+#ifndef STM32H7_DRIVERS_INCLUDE_UART_THREADX_SERIAL_
+#define STM32H7_DRIVERS_INCLUDE_UART_THREADX_SERIAL_
 
 #include <algorithm>
 #include <atomic>
@@ -191,4 +191,4 @@ class ThreadxSerial {
 
 }  // namespace uart
 
-#endif  // APP_INCLUDE_UART_THREADX_SERIAL_
+#endif  // STM32H7_DRIVERS_INCLUDE_UART_THREADX_SERIAL_

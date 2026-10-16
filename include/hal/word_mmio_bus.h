@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_HAL_WORD_MMIO_BUS_
-#define APP_INCLUDE_HAL_WORD_MMIO_BUS_
+#ifndef STM32H7_DRIVERS_INCLUDE_HAL_WORD_MMIO_BUS_
+#define STM32H7_DRIVERS_INCLUDE_HAL_WORD_MMIO_BUS_
 
 #include <async/concepts.hpp>
 #include <async/just_result_of.hpp>
@@ -51,4 +51,4 @@ struct WordMmioBus {
 
 }  // namespace hal
 
-#endif  // APP_INCLUDE_HAL_WORD_MMIO_BUS_
+#endif  // STM32H7_DRIVERS_INCLUDE_HAL_WORD_MMIO_BUS_

@@ -1,6 +1,6 @@
 # Evaluation: Intel groov for STM32H7 register access
 
-Context: the CM7 DMA driver (`CM7/app/include/dma/`, design in `docs/dma/*.puml`)
+Context: the DMA driver (`include/dma/`, design in `docs/dma/*.puml`)
 uses Intel's [groov](https://github.com/intel/generic-register-operation-optimizer)
 for DMA1/DMA2/DMAMUX1 register access. This note records what groov gives us,
 what it cost in practice, and a recommendation.

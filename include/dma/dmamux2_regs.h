@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_DMA_DMAMUX2_REGS_
-#define APP_INCLUDE_DMA_DMAMUX2_REGS_
+#ifndef STM32H7_DRIVERS_INCLUDE_DMA_DMAMUX2_REGS_
+#define STM32H7_DRIVERS_INCLUDE_DMA_DMAMUX2_REGS_
 
 #include <groov/config.hpp>
 #include <groov/identity.hpp>
@@ -161,4 +161,4 @@ constexpr auto dmamux2 =
             groov::field<"csof7", bool, 7u, 7u, groov::write_only<groov::w::one_to_set>>>>{};
 } // namespace stm32h7
 
-#endif  // APP_INCLUDE_DMA_DMAMUX2_REGS_
+#endif  // STM32H7_DRIVERS_INCLUDE_DMA_DMAMUX2_REGS_

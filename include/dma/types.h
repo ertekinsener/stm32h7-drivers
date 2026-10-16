@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_DMA_TYPES_
-#define APP_INCLUDE_DMA_TYPES_
+#ifndef STM32H7_DRIVERS_INCLUDE_DMA_TYPES_
+#define STM32H7_DRIVERS_INCLUDE_DMA_TYPES_
 
 #include <cstdint>
 #include <utility>
@@ -133,4 +133,4 @@ struct Callback {
 
 }  // namespace dma
 
-#endif  // APP_INCLUDE_DMA_TYPES_
+#endif  // STM32H7_DRIVERS_INCLUDE_DMA_TYPES_

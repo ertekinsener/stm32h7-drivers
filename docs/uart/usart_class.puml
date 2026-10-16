@@ -123,7 +123,7 @@ package "uart" {
   note right of Usart
     Declared in usart.h, defined in
     detail/usart_impl.h, instantiated per
-    port in app/source/uart/<port>.cc
+    port in an application TU (<port>.cc)
     (always optimized, groov).
   end note
   class "ThreadxSerial<Port>" as Serial {
@@ -140,7 +140,7 @@ package "uart" {
   }
 }
 
-package "webserver (portable, see docs/webserver)" {
+package "embedded-webserver (binding in the stm32_webserver application)" {
   class UartPort <<struct>> {
     +id : uint8_t
     +capabilities : UartCapabilities

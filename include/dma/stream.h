@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_DMA_STREAM_
-#define APP_INCLUDE_DMA_STREAM_
+#ifndef STM32H7_DRIVERS_INCLUDE_DMA_STREAM_
+#define STM32H7_DRIVERS_INCLUDE_DMA_STREAM_
 
 #include <cstdint>
 #include <expected>
@@ -16,7 +16,7 @@ namespace dma {
 //
 // The member functions are defined in dma/detail/stream_impl.h and explicitly
 // instantiated, together with the stream's IRQ handler, for each stream in the
-// DMA_STREAMS CMake list (app/source/dma/dma_streams.cmake). Those translation
+// DMA_STREAMS CMake list (cmake/dma_streams.cmake). Those translation
 // units are always optimized, because groov's sender layers only collapse into
 // plain loads/stores once inlined.
 //
@@ -95,4 +95,4 @@ extern template class Stream<Controller::kDma2, 7>;
 
 }  // namespace dma
 
-#endif  // APP_INCLUDE_DMA_STREAM_
+#endif  // STM32H7_DRIVERS_INCLUDE_DMA_STREAM_

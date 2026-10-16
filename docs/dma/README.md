@@ -1,6 +1,6 @@
 # DMA driver: file overview
 
-The CM7 DMA driver for DMA1, DMA2 and DMAMUX1. It uses Intel's groov for
+The STM32H7 DMA driver for DMA1, DMA2 and DMAMUX1. It uses Intel's groov for
 register access and supports interrupts. This page lists every file the driver
 consists of and what each one does.
 
@@ -31,7 +31,7 @@ User code includes only `dma/stream.h` and, if needed, `dma/tx_completion.h`.
 The groov-heavy code (`stream_impl.h`, `dmamux.h`) is compiled only in the
 generated per-stream translation units.
 
-## Public API (`CM7/app/include/dma/`)
+## Public API (`include/dma/`)
 
 | File | Purpose |
 |---|---|
@@ -41,14 +41,14 @@ generated per-stream translation units.
 | `tx_completion.h` | `dma::TxCompletion`: ThreadX adapter. Provides a `Callback` that sets event flags from the ISR, and `Wait(timeout)`, which blocks a thread until an event arrives. Keeps the driver core RTOS-agnostic. |
 | `dmamux.h` | `dma::dmamux1::Route<Channel>(Request)`: routes a DMAMUX1 channel to a peripheral request, with synchronization and event generation off. Internal; used by `Configure()`. |
 
-## Internals (`CM7/app/include/dma/detail/`)
+## Internals (`include/dma/detail/`)
 
 | File | Purpose |
 |---|---|
 | `stream_traits.h` | `StreamTraits<C, N>`: compile-time description of one stream. Holds its groov group (`dma1`/`dma2`); register names built with `stdx::ct_string` (`"s3cr"`, `"lisr"`/`"hisr"`, `"tcif3"`, `"ctcif3"`, ...); DMAMUX channel (`C*8 + N`); `IRQn_Type`; RCC clock-enable bit. Also defines the helpers `ToCtString<N>()` and `StreamRegister<N>(suffix)`. |
 | `stream_impl.h` | Definitions of all `Stream` member functions, with the groov paths (`Paths<C, N>`) and config validation (`IsValid`). Included only by the generated per-stream sources. |
 
-## Register maps (`CM7/app/include/dma/`)
+## Register maps (`include/dma/`)
 
 These were SVD-generated and committed earlier, then rewritten by this work.
 
@@ -57,32 +57,24 @@ These were SVD-generated and committed earlier, then rewritten by this work.
 | `dma1_regs.h`, `dma2_regs.h` | Invalid `read-write` / `read-only` replaced with groov write functions. Each `groov::reg` got its missing write-function argument. Status registers (`lisr`/`hisr`) are `read_only<w::ignore>`. Flag-clear registers (`lifcr`/`hifcr`) are `write_only<w::one_to_set>`, so clearing is a single store. Bit 20 is `trbuff` in every `SxCR`: it was missing in stream 0 and named `ack` in streams 1–7. Bus switched to `hal::WordMmioBus`. Google-style header guards. |
 | `dmamux1_regs.h`, `dmamux2_regs.h` | Same write-function and bus fixes. `csr`/`rgsr` are read-only; `cfr`/`rgcfr` are write-1-to-clear. |
 
-## Hardware abstraction helpers (`CM7/app/include/hal/`)
+## Hardware abstraction helpers (`include/hal/`)
 
 | File | Purpose |
 |---|---|
 | `word_mmio_bus.h` | `hal::WordMmioBus`: groov bus that always does 32-bit accesses. DMA/DMAMUX registers are word-access only (RM0399); groov's `mmio_bus` would narrow writes to byte/halfword stores. It skips the read when the write covers every bit. |
 | `concurrency_policy.h` | `hal::InterruptLockPolicy`: injected as `conc::injected_policy<>`. Gives groov's freestanding dependencies a critical section: save PRIMASK, disable interrupts, restore. Nestable and ISR-safe. |
 
-## Sources and build (`CM7/app/source/dma/`)
+## Sources and build (`source/dma/`, `cmake/`)
 
 | File | Purpose |
 |---|---|
-| `stream_instance.cc.in` | Template for one generated translation unit per stream. Each one holds the explicit instantiation `template class dma::Stream<...>;` and the matching `extern "C" DMAx_StreamN_IRQHandler()`. |
-| `dma_streams.cmake` | Cache variable `DMA_STREAMS` (which streams to build, e.g. `"1.0;1.1"`; default all 16). `target_add_dma_streams()` generates the sources into `build/generated_dma/` and builds them with `groov_add_optimized_objects()` (see `CM7/cmake/groov_baremetal.cmake`) as the `dma_streams` object library, then links it in. |
-| `tx_completion.cc` | `TxCompletion` implementation: `tx_event_flags_create/get/set/delete`. Error events map to `Error::kTransferError`. |
-| `stream_traits_check.cc` | `static_assert`s on `StreamTraits` against the CMSIS IRQ numbers and RM0399: IRQ numbers, DMAMUX channels, LISR/HISR split, generated register names. No runtime code. |
+| `cmake/stream_instance.cc.in` | Template for one generated translation unit per stream. Each one holds the explicit instantiation `template class dma::Stream<...>;` and the matching `extern "C" DMAx_StreamN_IRQHandler()`. |
+| `cmake/dma_streams.cmake` | Cache variable `DMA_STREAMS` (which streams to build, e.g. `"1.0;1.1"`; default all 16). `target_add_dma_streams()` generates the sources into `build/generated_dma/` and builds them with `groov_add_optimized_objects()` (see `cmake/groov_baremetal.cmake`) as the `dma_streams` object library, then links it in. |
+| `source/dma/tx_completion.cc` | `TxCompletion` implementation: `tx_event_flags_create/get/set/delete`. Error events map to `Error::kTransferError`. |
+| `cmake/groov_baremetal.cmake` | Shared with the USART driver: adds groov (`external/groov`, or `STM32H7_DRIVERS_GROOV_DIR`); the `groov_baremetal` interface target (groov plus `STDX_FREESTANDING`, `CONC_FREESTANDING`, `ASYNC_FREESTANDING`); the `GROOV_COMPILE_JOBS` Ninja pool (default 4); `groov_add_optimized_objects()`, which builds groov-heavy TUs at `-O1 -g1` in Debug. |
+| `source/dma/stream_traits_check.cc` | `static_assert`s on `StreamTraits` against the CMSIS IRQ numbers and RM0399: IRQ numbers, DMAMUX channels, LISR/HISR split, generated register names. No runtime code. |
 
-Generated at configure time (not in git): `CM7/build/generated_dma/dma<1|2>_stream<0-7>.cc`.
-
-## Modified project files
-
-| File | Changes |
-|---|---|
-| `CM7/CMakeLists.txt` | C++ standard 20 → 23. Includes `cmake/groov_baremetal.cmake` and `dma_streams.cmake`, calls `target_add_dma_streams()`, adds `dma_sources`. Links `groov_baremetal` with the plain signature, because `mx-generated.cmake` uses it. |
-| `CM7/cmake/groov_baremetal.cmake` | Shared with the USART driver: adds groov; the `groov_baremetal` interface target (groov plus `STDX_FREESTANDING`, `CONC_FREESTANDING`, `ASYNC_FREESTANDING`); the `GROOV_COMPILE_JOBS` Ninja pool (default 4); `groov_add_optimized_objects()`, which builds groov-heavy TUs at `-O1 -g1` in Debug. |
-| `CM7/stm32h755xx_flash_CM7.ld` | New `.dma_buffer (NOLOAD)` section at 0x30008000 in D2_SRAM1, after the 32 KiB that `CM4/stm32h755xx_flash_CM4.ld` gives the CM4 (its `.data`/`.bss`/stack at the 0x10000000 alias). |
-| `CLAUDE.md` | Build notes on DMA compile cost and `DMA_STREAMS`, plus a DMA architecture section. |
+Generated at configure time (not in git): `<build>/generated_dma/dma<1|2>_stream<0-7>.cc`.
 
 ## Documentation (`docs/dma/`)
 
@@ -96,10 +88,14 @@ Generated at configure time (not in git): `CM7/build/generated_dma/dma<1|2>_stre
 
 ## Required outside these files
 
-- **CubeMX:** disable DMA for USART3 in `stm32_webserver.ioc` and regenerate.
-  The generated stream sources define the `DMAx_StreamN_IRQHandler`s, so the
-  CubeMX copies in `stm32h7xx_it.c` would cause duplicate symbols.
-  Regenerating should also fix the `MX_UART4_Init()` mismatch in `main.c`.
+- **CubeMX:** DMA must stay disabled in the `.ioc` for every request the
+  driver serves. The generated stream sources define the
+  `DMAx_StreamN_IRQHandler`s, so the CubeMX copies in `stm32h7xx_it.c` would
+  cause duplicate symbols.
+- **Linker script:** a `.dma_buffer (NOLOAD)` output section for `DMA_BUFFER`,
+  in RAM that DMA1/DMA2 reach (not DTCM/ITCM), non-cacheable through the MPU
+  or kept coherent by the application; the stm32_webserver firmware puts it
+  in D2 SRAM1 at 0x30008000.
 - **U(S)ART streams:** set `Config::bufferable = true`, and enable the
   peripheral's DMA request (`USARTx->CR3.DMAT` / `DMAR`). The driver does not
   touch peripheral registers.

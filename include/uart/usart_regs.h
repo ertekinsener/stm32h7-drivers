@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_UART_USART_REGS_
-#define APP_INCLUDE_UART_USART_REGS_
+#ifndef STM32H7_DRIVERS_INCLUDE_UART_USART_REGS_
+#define STM32H7_DRIVERS_INCLUDE_UART_USART_REGS_
 
 #include <groov/config.hpp>
 #include <groov/identity.hpp>
@@ -167,4 +167,4 @@ constexpr auto usart =
 
 }  // namespace uart::regs
 
-#endif  // APP_INCLUDE_UART_USART_REGS_
+#endif  // STM32H7_DRIVERS_INCLUDE_UART_USART_REGS_

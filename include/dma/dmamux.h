@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_DMA_DMAMUX_
-#define APP_INCLUDE_DMA_DMAMUX_
+#ifndef STM32H7_DRIVERS_INCLUDE_DMA_DMAMUX_
+#define STM32H7_DRIVERS_INCLUDE_DMA_DMAMUX_
 
 #include <groov/groov.hpp>
 #include <stdx/ct_string.hpp>
@@ -31,4 +31,4 @@ void Route(Request request) noexcept {
 
 }  // namespace dma::dmamux1
 
-#endif  // APP_INCLUDE_DMA_DMAMUX_
+#endif  // STM32H7_DRIVERS_INCLUDE_DMA_DMAMUX_

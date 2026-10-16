@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_HAL_GPIO_
-#define APP_INCLUDE_HAL_GPIO_
+#ifndef STM32H7_DRIVERS_INCLUDE_HAL_GPIO_
+#define STM32H7_DRIVERS_INCLUDE_HAL_GPIO_
 
 #include <cstdint>
 
@@ -37,4 +37,4 @@ bool Read(Pin pin) noexcept;
 
 }  // namespace hal
 
-#endif  // APP_INCLUDE_HAL_GPIO_
+#endif  // STM32H7_DRIVERS_INCLUDE_HAL_GPIO_

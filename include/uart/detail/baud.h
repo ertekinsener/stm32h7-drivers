@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_UART_DETAIL_BAUD_
-#define APP_INCLUDE_UART_DETAIL_BAUD_
+#ifndef STM32H7_DRIVERS_INCLUDE_UART_DETAIL_BAUD_
+#define STM32H7_DRIVERS_INCLUDE_UART_DETAIL_BAUD_
 
 #include <cstdint>
 #include <optional>
@@ -46,4 +46,4 @@ constexpr std::optional<std::uint32_t> ComputeBrr(
 
 }  // namespace uart::detail
 
-#endif  // APP_INCLUDE_UART_DETAIL_BAUD_
+#endif  // STM32H7_DRIVERS_INCLUDE_UART_DETAIL_BAUD_

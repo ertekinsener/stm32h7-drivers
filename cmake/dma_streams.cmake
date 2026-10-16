@@ -6,8 +6,8 @@ set(DMA_STREAMS
     CACHE STRING "DMA streams to build, as <controller>.<stream>")
 
 # Builds the streams in DMA_STREAMS as the optimized object library dma_streams
-# (see groov_add_optimized_objects in cmake/groov_baremetal.cmake) and links it
-# into `target`.
+# (see groov_add_optimized_objects in groov_baremetal.cmake) and links it into
+# `target`.
 function(target_add_dma_streams target)
   set(output_dir "${CMAKE_CURRENT_BINARY_DIR}/generated_dma")
   set(sources)

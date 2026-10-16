@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_DMA_DMA2_REGS_
-#define APP_INCLUDE_DMA_DMA2_REGS_
+#ifndef STM32H7_DRIVERS_INCLUDE_DMA_DMA2_REGS_
+#define STM32H7_DRIVERS_INCLUDE_DMA_DMA2_REGS_
 
 #include <groov/config.hpp>
 #include <groov/identity.hpp>
@@ -361,4 +361,4 @@ constexpr auto dma2 =
             groov::field<"fth", std::uint_fast8_t, 1u, 0u, groov::w::replace>>>{};
 } // namespace stm32h7
 
-#endif  // APP_INCLUDE_DMA_DMA2_REGS_
+#endif  // STM32H7_DRIVERS_INCLUDE_DMA_DMA2_REGS_

@@ -1,5 +1,5 @@
-#ifndef APP_INCLUDE_HAL_CONCURRENCY_POLICY_
-#define APP_INCLUDE_HAL_CONCURRENCY_POLICY_
+#ifndef STM32H7_DRIVERS_INCLUDE_HAL_CONCURRENCY_POLICY_
+#define STM32H7_DRIVERS_INCLUDE_HAL_CONCURRENCY_POLICY_
 
 #include <conc/concurrency.hpp>
 
@@ -46,4 +46,4 @@ struct InterruptLockPolicy {
 template <>
 inline auto conc::injected_policy<> = hal::InterruptLockPolicy{};
 
-#endif  // APP_INCLUDE_HAL_CONCURRENCY_POLICY_
+#endif  // STM32H7_DRIVERS_INCLUDE_HAL_CONCURRENCY_POLICY_
