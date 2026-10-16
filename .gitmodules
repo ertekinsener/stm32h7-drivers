@@ -1,0 +1,3 @@
+[submodule "external/groov"]
+	path = external/groov
+	url = https://github.com/intel/generic-register-operation-optimizer.git
