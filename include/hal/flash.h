@@ -11,7 +11,7 @@ namespace hal::flash {
 // eight 128 KiB sectors), for data the CM7 keeps there (e.g. settings). On
 // the dual-core STM32H7 the CM7 runs from bank 1, so it keeps running while
 // bank 2 is busy; a CM4 running from bank 2 stalls meanwhile.
-// Plain CMSIS register access like hal/gpio.h. Not thread safe: one user.
+// Through the register layer like hal/gpio.h. Not thread safe: one user.
 
 inline constexpr std::uintptr_t kBank2Base = 0x08100000;
 inline constexpr std::size_t kSectorSize = 128 * 1024;

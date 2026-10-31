@@ -50,7 +50,8 @@ concept PortDescriptor = requires {
 //
 // The member functions are defined in uart/detail/usart_impl.h and explicitly
 // instantiated per port (the application's <port>.cc), which also defines the
-// USARTx_IRQHandler. Those translation units are always optimized (groov).
+// USARTx_IRQHandler. Register access goes through the groov register layer
+// (stm32h7::regs::usart), which is compiled optimized.
 //
 // Write() is safe from any context on this core, including interrupts of any
 // priority and concurrently with Configure(). Read() must be called by a
@@ -111,7 +112,9 @@ class Usart {
   static bool IsTxBusy() noexcept;
 
   // Called from USARTx_IRQHandler().
-  static void HandleIrq() noexcept;
+  // flatten: inlines groov's sync_read/sync_write wait (out of line at -O2
+  // otherwise) and the RX/TX bookkeeping into the interrupt handler.
+  [[gnu::flatten]] static void HandleIrq() noexcept;
 
  private:
   static Event UpdateRxHead() noexcept;

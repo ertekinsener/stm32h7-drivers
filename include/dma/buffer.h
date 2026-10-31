@@ -3,10 +3,19 @@
 
 #include <cstdint>
 
-// Places a buffer in D2 SRAM1, which DMA1/DMA2 can reach and the MPU maps as
-// non-cacheable (see MPU_Config() in main.c), so no cache maintenance is
-// needed. Usage: DMA_BUFFER std::array<std::uint8_t, 256> rx_buffer;
-#define DMA_BUFFER [[gnu::section(".dma_buffer"), gnu::aligned(32)]]
+// Output section of DMA_BUFFER. The default .dma_buffer is placed by the
+// application's linker script; the mcu-cmake module sets the section of the
+// chip region given as DMA_BUFFER_REGION (e.g. .ram_d2).
+#ifndef STM32H7_DRIVERS_DMA_BUFFER_SECTION
+#define STM32H7_DRIVERS_DMA_BUFFER_SECTION ".dma_buffer"
+#endif
+
+// Places a buffer in memory that DMA1/DMA2 can reach (D2 SRAM1 in the
+// reference application) and the MPU maps as non-cacheable (see MPU_Config()
+// in main.c), so no cache maintenance is needed.
+// Usage: DMA_BUFFER std::array<std::uint8_t, 256> rx_buffer;
+#define DMA_BUFFER \
+  [[gnu::section(STM32H7_DRIVERS_DMA_BUFFER_SECTION), gnu::aligned(32)]]
 
 namespace dma {
 

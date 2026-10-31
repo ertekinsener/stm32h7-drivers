@@ -5,8 +5,9 @@
 
 namespace hal {
 
-// Plain CMSIS register access: pins are configured once at init, which does
-// not justify groov's compile cost.
+// GPIO pins. A pin known at compile time is configured with
+// ConfigureAlternate<pin>() (hal/detail/gpio_impl.h, groov with named fields,
+// used by the drivers); the functions here take a pin at runtime.
 
 enum class Port : std::uint8_t { kA, kB, kC, kD, kE, kF, kG, kH, kI, kJ, kK };
 

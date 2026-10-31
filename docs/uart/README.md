@@ -1,13 +1,14 @@
 # USART driver: file overview
 
-The driver for the STM32H7 U(S)ARTs. It uses Intel's groov for register
-access and the DMA driver (`docs/dma/README.md`) for transfers, and handles
-interrupts. Reception runs continuously through circular DMA with IDLE-line
-detection. Transmission is queued in a lock-free multi-producer ring
-(`ring::MpscRing`, embedded-core): `Write()` works from any context, including
-interrupts, and the driver sends every committed record in one DMA transfer.
-The application describes its ports at compile time (port descriptors, see
-"Ports of an application") and instantiates the driver once per port.
+The driver for the STM32H7 U(S)ARTs. It uses groov for register access, on
+the generated map `stm32h7::regs::usart`, and the DMA driver
+(`docs/dma/README.md`) for transfers, and handles interrupts. Reception runs
+continuously through circular DMA with IDLE-line detection. Transmission is
+queued in a lock-free multi-producer ring (`ring::MpscRing`, embedded-core):
+`Write()` works from any context, including interrupts, and the driver sends
+every committed record in one DMA transfer. The application describes its
+ports at compile time (port descriptors, see "Ports of an application") and
+instantiates the driver once per port.
 
 ## Dependency graph
 
@@ -26,19 +27,22 @@ The application describes its ports at compile time (port descriptors, see
               |
               +--> uart/types.h
               +--> ring/mpsc_ring.h  (TX queue; embedded-core, hardware-independent)
-              +--> uart/detail/instance_traits.h --> stm32h7xx_hal.h
+              +--> uart/detail/instance_traits.h --> stm32h7/irq.h, stm32h7/rcc.h,
+                                                     hal/rcc.h
 
-  <application>/<port>.cc (one TU per port, built optimized)
+  <application>/<port>.cc (one TU per port, built with -O2)
    +--> uart/detail/usart_impl.h
-          +--> uart/usart_regs.h --> hal/word_mmio_bus.h
+          +--> stm32h7/regs/usart.h  (groov map)
           +--> uart/detail/baud.h
-          +--> dma/stream.h, groov/groov.hpp
+          +--> dma/stream.h, hal/detail/gpio_impl.h, hal/cortex_m.h
+          +--> groov/groov.hpp
 ```
 
 User code includes its port descriptors and `uart/threadx_serial.h` (or
-`uart/usart.h` for the non-blocking core). The groov-heavy code
-(`usart_impl.h`, `usart_regs.h`) is compiled only in the per-port
-translation units.
+`uart/usart.h` for the non-blocking core). The groov code (`usart_impl.h`)
+is compiled only in the per-port translation units, with -O2; `HandleIrq()`
+is `[[gnu::flatten]]` (declared in `usart.h`), so groov's wait is inlined
+in the interrupt handler.
 
 ## Public API (`include/uart/`)
 
@@ -52,29 +56,29 @@ translation units.
 
 | File | Purpose |
 |---|---|
-| `instance_traits.h` | `InstanceTraits<Instance>`, from the `consteval Describe()` table: base address, `IRQn`, DMAMUX RX/TX requests, clock domain and RCC enable bit. `EnableClock()` selects PCLK as kernel clock (`D2CCIP2R`) and enables the bus clock. `KernelClockHz()` reads PCLK1/PCLK2 at runtime through HAL. |
+| `instance_traits.h` | `InstanceTraits<Instance>`, from the `consteval Describe()` table: base address (`regs::usart::kUsart3Base`, ...), `stm32h7::Irq`, DMAMUX RX/TX requests, clock domain and the RCC enable field (`ClockEnableField<I>()`: `"usart3en"`, ...). `EnableClock()` selects PCLK as kernel clock (`D2CCIP2R`) and enables the bus clock. `KernelClockHz()` is PCLK1/PCLK2 at runtime (`hal::rcc::Pclk1Hz()`: `SystemCoreClock` and the RCC prescalers). |
 | `baud.h` | `constexpr ComputeBrr(clock, baud, oversampling)`: BRR for OVER16/OVER8. Returns `nullopt` if USARTDIV is out of 16..0xFFFF or the baud error exceeds 2 %. |
-| `usart_impl.h` | Definitions of all `Usart` members: groov paths (`Paths<Base>`), frame-length mapping (`ToFrameBits`: M1:M0 counts the parity bit), flow-control validation, the `Configure()` sequence (pauses TX and lets the running batch finish), the ring-buffer `Read()`, `UpdateRxHead()`, the TX queue (`Write()` pends the USART interrupt; `StartTx()` sends the committed records from `HandleIrq()` and `OnTxDma()`) and the DMA callbacks. Included only by the per-port sources. |
+| `usart_impl.h` | Definitions of all `Usart` members: groov paths (`Paths<Base>` on `regs::usart::kMap<Base>`), frame-length mapping (`ToFrameBits`: M1:M0 counts the parity bit), flow-control validation, the `Configure()` sequence (pauses TX and lets the running batch finish), the ring-buffer `Read()`, `UpdateRxHead()`, the TX queue (`Write()` pends the USART interrupt; `StartTx()` sends the committed records from `HandleIrq()` and `OnTxDma()`) and the DMA callbacks. Included only by the per-port sources. |
 
 ## Register map
 
 | File | Content |
 |---|---|
-| `uart/usart_regs.h` | `uart::regs::usart<Base>`: one groov group for every U(S)ART, templated on the base address. It replaces the SVD-generated `usart3_regs.h`: write functions fixed, ISR/RDR read-only, ICR/RQR write-1 (`write_only<w::one_to_set>`), bus `hal::WordMmioBus`. Field names follow the SVD (`tcbgtc`, and `txeie`/`rxneie` for TXFNFIE/RXFNEIE). |
+| `stm32h7/regs/usart.h` | The groov map of all U(S)ARTs, `kMap<Base>` and `kUsart1`..`kUart8`, generated by `tools/svd2groov` from the USART1 SVD description (do not edit). The config makes ICR/RQR write-1 (`write_only<w::one_to_set>`) and BRR one 16-bit field (the SVD splits it in BRR_4_15 and BRR_0_3); ISR/RDR are read-only in the SVD already. Field names follow the SVD (`tcbgtc`, and `txeie`/`rxneie` for TXFNFIE/RXFNEIE). |
 
 ## Hardware abstraction helpers
 
 | File | Purpose |
 |---|---|
-| `hal/gpio.h`, `source/hal/gpio.cc` | `hal::Pin {port, number, alternate}` and `ConfigureAlternate(pin, Pull, Speed)`: enables the GPIO port clock and sets push-pull alternate-function mode via CMSIS. No groov, because pins are configured once at init. |
-| `hal/word_mmio_bus.h`, `hal/concurrency_policy.h` | Shared with the DMA driver; see `docs/dma/README.md`. |
+| `hal/gpio.h`, `source/hal/gpio.cc` | `hal::Pin {port, number, alternate}` and `ConfigureAlternate(pin, Pull, Speed)`: enables the GPIO port clock and sets push-pull alternate-function mode. `ConfigureAlternate<pin>()` (`hal/detail/gpio_impl.h`, used by the driver: the pins are compile-time) writes the named fields (`moder.mode8`, ...) of that port only; the runtime overload in `gpio.cc` dispatches over the eleven ports and does register-level read-modify-writes, since a runtime pin number is no field name. |
+| `hal/cortex_m.h`, `hal/rcc.h` | NVIC and bus clocks; shared with the DMA driver, see `docs/dma/README.md`. |
 | `ring/mpsc_ring.h` (embedded-core) | `ring::MpscRing<kCapacity, kRecordSlots>`: lock-free MPSC ring of variable-size records. Producers reserve bytes and a record slot with one CAS on a packed 32-bit word, copy, then stamp the slot; a record never wraps (the buffer end is skipped instead). The single consumer's `Peek()` returns the committed, contiguous records at the tail as one span, and `Release()` frees them. Neither side waits. Storage is attached at runtime (`DMA_BUFFER`); control words stay in normal RAM. Part of embedded-core (`embedded_core::ring`), host-tested there. |
 
 ## Sources and build (`source/uart/`)
 
 | File | Purpose |
 |---|---|
-| `uart_checks.cc` | `static_assert`s: instance traits against CMSIS (base, IRQn, DMA requests, clock domain) and `ComputeBrr()` (115200 → 868 and 921600 → 109 with OVER16; 921600 → 0xD4 with OVER8; out-of-range rates rejected). No runtime code. Part of `stm32h7_drivers::uart`. |
+| `uart_checks.cc` | `static_assert`s: instance traits against RM0399 (base, IRQ number, DMA requests, clock domain) and `ComputeBrr()` (115200 → 868 and 921600 → 109 with OVER16; 921600 → 0xD4 with OVER8; out-of-range rates rejected). No runtime code. Part of `stm32h7_drivers::uart`. |
 
 ## Ports of an application
 
@@ -114,9 +118,11 @@ extern "C" void USART6_IRQHandler() {
 }
 ```
 
-These translation units are built with `groov_add_optimized_objects()`
-(`cmake/groov_baremetal.cmake`), and the DMA streams they use must be in
-`DMA_STREAMS`:
+These translation units contain the driver's groov code and are built with
+-O2: with mcu-cmake they are the `PORTS` of `stm32h7_drivers_add_uart()`,
+with CubeMX/stm32-cmake they go through `groov_add_optimized_objects()`
+(`cmake/stm32h7_drivers/groov_baremetal.cmake`). The DMA streams they use
+must be built (`STREAMS` with mcu-cmake, `DMA_STREAMS` otherwise):
 
 ```cmake
 groov_add_optimized_objects(uart_ports SOURCES ${port_sources}
@@ -128,7 +134,7 @@ target_sources(firmware PRIVATE $<TARGET_OBJECTS:uart_ports>)
 
 | File | Content |
 |---|---|
-| `usart_class.puml` | Class diagram: `Usart`, `ThreadxSerial`, `Usart3Vcp`, `InstanceTraits`, `ComputeBrr`, the groov map, DMA streams, GPIO, and the web UI binding. |
+| `usart_class.puml` | Class diagram: `Usart`, `ThreadxSerial`, `Usart3Vcp`, `InstanceTraits`, `ComputeBrr`, the groov map, DMA streams, GPIO, and the web UI binding (the map is now the generated `stm32h7::regs::usart::kMap<Base>`). |
 | `usart_rx_sequence.puml` | Sequence diagram: circular-DMA reception; HT/TC/IDLE events into `UpdateRxHead()`; a blocking `Read()`. |
 | `usart_tx_configure_sequence.puml` | Sequence diagram: queued `Write()` from threads and interrupts, batched DMA transmission, and reconfiguration from the web UI. |
 | `README.md` | This file. |

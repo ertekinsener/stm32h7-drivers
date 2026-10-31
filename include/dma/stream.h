@@ -16,9 +16,9 @@ namespace dma {
 //
 // The member functions are defined in dma/detail/stream_impl.h and explicitly
 // instantiated, together with the stream's IRQ handler, for each stream in the
-// DMA_STREAMS CMake list (cmake/dma_streams.cmake). Those translation
-// units are always optimized, because groov's sender layers only collapse into
-// plain loads/stores once inlined.
+// DMA_STREAMS CMake list (cmake/stm32h7_drivers/dma_streams.cmake), so only
+// the streams in use are linked. Register access goes through the groov
+// register layer (stm32h7::regs::dma), which is compiled optimized.
 //
 // A stream has a single owner and is not thread-safe. The callback runs in
 // interrupt context; set it while the stream is idle.
@@ -46,9 +46,9 @@ class Stream {
   // Starts a transfer of `count` items of the configured peripheral data
   // size. For memory-to-memory, `peripheral` is the source and `memory` the
   // destination. Both must be reachable by DMA (see DMA_BUFFER).
-  static std::expected<void, Error> Start(std::uintptr_t peripheral,
-                                          std::uintptr_t memory,
-                                          std::uint16_t count) noexcept;
+  [[gnu::flatten]] static std::expected<void, Error> Start(
+      std::uintptr_t peripheral, std::uintptr_t memory,
+      std::uint16_t count) noexcept;
 
   static std::expected<void, Error> Start(const volatile void* peripheral,
                                           const volatile void* memory,
@@ -61,16 +61,18 @@ class Stream {
   // its flags.
   static std::expected<void, Error> Stop() noexcept;
 
-  static bool IsBusy() noexcept;
+  [[gnu::flatten]] static bool IsBusy() noexcept;
 
   // Items left to transfer (SxNDTR).
-  static std::uint16_t Remaining() noexcept;
+  [[gnu::flatten]] static std::uint16_t Remaining() noexcept;
 
   // Called from DMAx_StreamN_IRQHandler().
-  static void HandleIrq() noexcept;
+  [[gnu::flatten]] static void HandleIrq() noexcept;
 
  private:
-  static void ClearFlags() noexcept;
+  // flatten: groov's sync_read/sync_write wait stays out of line at -O2
+  // otherwise; these run in interrupt context.
+  [[gnu::flatten]] static void ClearFlags() noexcept;
 
   inline static Callback callback_{};
   inline static Event interrupts_ = Event::kNone;

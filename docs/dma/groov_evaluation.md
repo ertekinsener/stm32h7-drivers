@@ -1,5 +1,10 @@
 # Evaluation: Intel groov for STM32H7 register access
 
+> Measured on the first design (hand-fixed maps, -O1 in Debug only). The
+> drivers now use maps generated from the SVD (tools/svd2groov) and build
+> their groov code with -O2 in every configuration (README.md, "Register
+> maps").
+
 Context: the DMA driver (`include/dma/`, design in `docs/dma/*.puml`)
 uses Intel's [groov](https://github.com/intel/generic-register-operation-optimizer)
 for DMA1/DMA2/DMAMUX1 register access. This note records what groov gives us,

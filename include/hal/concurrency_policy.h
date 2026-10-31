@@ -4,10 +4,9 @@
 #include <conc/concurrency.hpp>
 
 #include <concepts>
-#include <cstdint>
 #include <utility>
 
-#include "stm32h7xx.h"
+#include "hal/cortex_m_cpu.h"
 
 namespace hal {
 
@@ -21,24 +20,12 @@ struct InterruptLockPolicy {
   static auto call_in_critical_section(F&& f, Pred&&... pred)
       -> decltype(std::forward<F>(f)()) {
     while (true) {
-      const PrimaskGuard guard;
+      const cortex_m::InterruptLock lock;
       if ((... && pred())) {
         return std::forward<F>(f)();
       }
     }
   }
-
- private:
-  class PrimaskGuard {
-   public:
-    PrimaskGuard() noexcept : primask_(__get_PRIMASK()) { __disable_irq(); }
-    PrimaskGuard(const PrimaskGuard&) = delete;
-    PrimaskGuard& operator=(const PrimaskGuard&) = delete;
-    ~PrimaskGuard() { __set_PRIMASK(primask_); }
-
-   private:
-    std::uint32_t primask_;
-  };
 };
 
 }  // namespace hal

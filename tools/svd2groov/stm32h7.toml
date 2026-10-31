@@ -1,0 +1,176 @@
+# svd2groov config of the stm32h7-drivers groov register maps. Output paths
+# are relative to output_root (relative to this file). Reference: RM0399.
+#
+# Per [[map]] (include/stm32h7/regs/<name>.h, namespace
+# stm32h7::regs::<name>): template <std::uintptr_t Base> kMap, a
+# groov::group of the registers, and per instance k<Instance>Base and
+# k<Instance> = kMap<k<Instance>Base>.
+#   instances     SVD peripherals with the same registers (derivedFrom is
+#                 followed); the generator checks that they are the same.
+#   registers     only these registers (glob patterns over SVD names).
+#   strip_prefix  removed from the register names (DMAMUX1_C0CR -> C0CR).
+#   bus, bus_includes  groov bus of the map.
+#   [.access]     "REG" or "REG.FIELD" (globs over SVD names) -> access kind,
+#                 where the SVD is wrong or groov needs more: read_write,
+#                 read_only, write_only, write_one_to_set,
+#                 write_one_to_clear, read_one_to_clear, read_zero_to_clear.
+#                 A register entry sets its fields too.
+#   [.rename]     "REG" or "REG.FIELD" -> new name.
+#   [.add]        "REG.FIELD" -> { bit = n } or { msb = m, lsb = n }, optional
+#               access (default: the register's): a field the SVD lacks.
+#   [.redefine]   "REG" -> [{ name, bit | msb, lsb, access }]: replaces the
+#                 fields of the register.
+#   fixes         names of [fixes.<name>] tables (access, rename, add,
+#                 redefine) shared by several maps; the map's own tables come
+#                 last.
+# Every pattern must match something.
+
+output_root = "../.."
+
+[svd]
+name = "STM32H755_CM7.svd (stm32duino/stm32_svd 6705127)"
+url = "https://raw.githubusercontent.com/stm32duino/stm32_svd/670512719c8a6ba929aa18aef48915203149d486/svd/STM32H7xx/STM32H755_CM7.svd"
+sha256 = "f7ca254b4bc7348af564e943f7a93636aaed304444b70fb8fd50b64a3f4d0130"
+
+# Core registers (NVIC, SCB), from the ARMv7-M Architecture Reference Manual.
+[[svd_extra]]
+name = "cortex_m7.svd"
+file = "cortex_m7.svd"
+
+[defaults]
+guard_prefix = "STM32H7_DRIVERS_"
+header_dir = "include/stm32h7/regs"
+# DMA and DMAMUX registers "have to be accessed by words" (RM0399); the
+# other peripherals accept them as well.
+bus = "hal::WordMmioBus"
+bus_includes = ["hal/word_mmio_bus.h"]
+
+# DMA1/DMA2 (RM0399, DMA registers): the flag clear registers are write-1
+# (read-write in the SVD); FCR.FS is read-only; SxCR.TRBUFF (bit 20) is
+# missing in S0CR and named ACK in S1CR..S7CR.
+[fixes.dma.access]
+"?IFCR" = "write_one_to_set"
+"S?FCR.FS" = "read_only"
+[fixes.dma.rename]
+"S[1-7]CR.ACK" = "TRBUFF"
+[fixes.dma.add]
+"S0CR.TRBUFF" = { bit = 20 }
+
+[[map]]
+name = "dma"
+instances = ["DMA1", "DMA2"]
+fixes = ["dma"]
+
+# DMAMUX1 (RM0399, DMAMUX registers): only the channel configuration.
+[[map]]
+name = "dmamux1"
+instances = ["DMAMUX1"]
+registers = ["DMAMUX1_C*CR"]
+strip_prefix = "DMAMUX1_"
+
+# U(S)ART (RM0399, USART registers). The SVD splits BRR into BRR_4_15 and
+# BRR_0_3; the driver writes the whole value. RQR and ICR are write-1. Field
+# names follow the SVD, including its quirks: "tcbgtc" in ICR and the
+# FIFO-disabled names "txeie"/"rxneie"/"txe"/"rxne" for TXFNF*/RXFNE*.
+[[map]]
+name = "usart"
+instances = ["USART1", "USART2", "USART3", "UART4", "UART5", "USART6", "UART7",
+             "UART8"]
+[map.access]
+"RQR" = "write_one_to_set"
+"ICR" = "write_one_to_set"
+[map.redefine]
+"BRR" = [{ name = "BRR", msb = 15, lsb = 0 }]
+
+# GPIOA..GPIOK (RM0399, GPIO registers). BSRR is write-only: writing 0 has
+# no effect.
+[[map]]
+name = "gpio"
+instances = ["GPIOA", "GPIOB", "GPIOC", "GPIOD", "GPIOE", "GPIOF", "GPIOG",
+             "GPIOH", "GPIOI", "GPIOJ", "GPIOK"]
+[map.access]
+"BSRR" = "write_one_to_set"
+
+# RCC (RM0399, RCC registers): only the registers the drivers use. The SVD
+# names HSI48ON/HSI48RDY "RC48ON"/"RC48RDY" and UART7EN/UART8EN
+# "USART7EN"/"USART8EN", lacks APB1LENR.WWDG2EN, and makes the CR ready
+# flags read-write.
+[[map]]
+name = "rcc"
+instances = ["RCC"]
+registers = ["CR", "D1CFGR", "D2CFGR", "D2CCIP2R", "AHB1ENR", "AHB2ENR",
+             "AHB4ENR", "APB1LENR", "APB2ENR"]
+[map.rename]
+"CR.RC48ON" = "HSI48ON"
+"CR.RC48RDY" = "HSI48RDY"
+"APB1LENR.USART7EN" = "UART7EN"
+"APB1LENR.USART8EN" = "UART8EN"
+[map.add]
+"APB1LENR.WWDG2EN" = { bit = 11 }
+[map.access]
+"CR.*RDY" = "read_only"
+
+# RNG (RM0399, RNG registers): CEIS/SEIS are cleared by writing 0 (rc_w0).
+[[map]]
+name = "rng"
+instances = ["RNG"]
+[map.access]
+"SR.?EIS" = "read_zero_to_clear"
+
+# FLASH bank 2 (RM0399, FLASH registers). The SVD makes KEYR2 read-only and
+# misnames CCR2.CLR_RDSERR2/CLR_DBECCERR2 "...1"; SR2 is read-only, CCR2
+# write-1.
+[[map]]
+name = "flash"
+instances = ["Flash"]
+registers = ["KEYR2", "CR2", "SR2", "CCR2"]
+[map.access]
+"KEYR2" = "write_only"
+"SR2" = "read_only"
+"CCR2" = "write_one_to_set"
+[map.rename]
+"CCR2.CLR_RDSERR1" = "CLR_RDSERR2"
+"CCR2.CLR_DBECCERR1" = "CLR_DBECCERR2"
+
+# Core: NVIC set-enable / set-pending (write 1), priority bytes, SCB.
+[[map]]
+name = "nvic"
+instances = ["NVIC"]
+
+# Byte accesses: groov's mmio_bus stores one byte, unlike hal::WordMmioBus.
+[[map]]
+name = "nvic_ipr"
+instances = ["NVIC_IPR"]
+bus = "groov::mmio_bus<>"
+bus_includes = ["groov/mmio_bus.hpp", "hal/concurrency_policy.h"]
+
+# AIRCR writes need VECTKEY; the drivers only read PRIGROUP.
+[[map]]
+name = "scb"
+instances = ["SCB"]
+[map.access]
+"AIRCR" = "read_only"
+
+# Interrupt numbers (RM0399, NVIC vector table) as stm32h7::Irq, from the
+# <interrupt> entries of all peripherals. rename: regular expressions
+# (full match) -> replacement, where the SVD names are inconsistent; add:
+# name -> number, for vectors the SVD lacks.
+[interrupts]
+output = "include/stm32h7/irq.h"
+namespace = "stm32h7"
+name = "Irq"
+[interrupts.rename]
+"DMA_STR([0-6])" = "DMA1_STREAM\\1"
+"DMA([12])_STR([0-7])" = "DMA\\1_STREAM\\2"
+"TIM_CC" = "TIM1_CC"
+"HRTIM_TIM([BE])" = "HRTIM1_TIM\\1"
+"SDMMC" = "SDMMC2"
+"LPUART" = "LPUART1"
+"cm4_sev_it" = "CM4_SEV"
+"WKUP" = "WAKEUP_PIN"
+# Vectors of the CMSIS device header (stm32h755xx.h) that the SVD lacks:
+# CM7_SEV_IT_IRQn, HSEM2_IRQn, ECC_IRQn.
+[interrupts.add]
+"CM7_SEV" = 64
+"HSEM2" = 126
+"ECC" = 145

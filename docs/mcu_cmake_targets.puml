@@ -1,0 +1,60 @@
+@startuml mcu_cmake_targets
+' CMake targets of examples/h755zi-mcu-cmake: stm32h7-drivers libraries
+' (cmake/stm32h7_drivers.cmake) on top of the mcu-cmake targets. Arrows are
+' PUBLIC links unless labelled. -O2: groov code, built with -O2 in every
+' configuration.
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+package "mcu-cmake" {
+  [stm32::H755ZI::CM7\nINTERFACE, mcu_add_chip()] as chip
+  [board::hal\nSTATIC, st_add_hal()\nDMA ETH GPIO PWR] as st_hal
+  [board::startup\nOBJECT, st_add_cmsis_startup()] as startup
+  [board::rtos\nSTATIC, threadx_add_kernel()] as rtos
+  [board::netx\nSTATIC, threadx_add_netxduo()] as netx
+  [mcu::cxx_bare_metal\nmcu::warnings] as support
+}
+
+package "stm32h7-drivers" {
+  [stm32h7_drivers::groov\nINTERFACE, freestanding] as groov
+  [embedded_core::ring\nINTERFACE] as ring
+  [board::drivers_hal\nSTATIC, -O2: hal/] as drv_hal
+  [board::dma\nSTATIC, -O2: dma/, DMA1 stream 0, 1] as dma
+  [board::uart\nSTATIC, -O2: uart/, usart3_vcp.cc] as uart
+  [board::eth\nSTATIC: eth/] as eth
+}
+
+package "application" {
+  [board::config\nINTERFACE: ports.h, tx_user.h,\nnx_stm32_eth_config.h] as config
+  [firmware\nexecutable] as firmware
+}
+
+st_hal --> chip
+startup --> st_hal
+rtos --> chip
+rtos --> config
+netx --> rtos
+
+drv_hal --> chip
+drv_hal --> groov
+dma --> drv_hal
+dma --> rtos
+uart --> dma
+uart --> ring
+uart --> config
+uart --> rtos
+eth --> st_hal
+eth --> netx
+eth --> config
+
+drv_hal ..> support : PRIVATE
+dma ..> support : PRIVATE
+uart ..> support : PRIVATE
+
+firmware --> startup
+firmware --> uart
+firmware --> eth
+firmware ..> support : PRIVATE
+
+@enduml

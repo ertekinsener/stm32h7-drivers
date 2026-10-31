@@ -4,35 +4,37 @@
 #include <cstdint>
 #include <span>
 
-#include "stm32h7xx.h"
+#include <groov/groov.hpp>
+
+#include "hal/cortex_m_cpu.h"
+#include "stm32h7/regs/rcc.h"
+#include "stm32h7/regs/rng.h"
 
 namespace hal::rng {
 namespace {
+
+using cortex_m::InterruptLock;
+using stm32h7::regs::rcc::kRcc;
+using stm32h7::regs::rng::kRng;
+
+constexpr groov::path<"sr", "drdy"> kDrdy{};
+constexpr groov::path<"sr", "ceis"> kCeis{};
+constexpr groov::path<"sr", "seis"> kSeis{};
+constexpr groov::path<"cr", "rngen"> kRngen{};
 
 // Polls before giving up; far longer than HSI48 start-up (a few us) or one
 // RNG word (RM0399: 42 RNG clock cycles once seeded).
 constexpr std::uint32_t kTimeoutPolls = 1'000'000;
 
-bool WaitFor(volatile std::uint32_t& reg, std::uint32_t mask) noexcept {
+template <typename Predicate>
+bool WaitFor(Predicate done) noexcept {
   for (std::uint32_t i = 0; i < kTimeoutPolls; ++i) {
-    if ((reg & mask) != 0) {
+    if (done()) {
       return true;
     }
   }
   return false;
 }
-
-// Masks interrupts and restores PRIMASK on exit (nestable).
-class InterruptLock {
- public:
-  InterruptLock() noexcept : primask_(__get_PRIMASK()) { __disable_irq(); }
-  InterruptLock(const InterruptLock&) = delete;
-  InterruptLock& operator=(const InterruptLock&) = delete;
-  ~InterruptLock() { __set_PRIMASK(primask_); }
-
- private:
-  std::uint32_t primask_;
-};
 
 // Set by Init(); without it ReadWord() fails at once instead of timing out.
 bool started = false;
@@ -43,9 +45,10 @@ std::uint32_t fallback_state = 0x9E3779B9u;
 
 void Restart() noexcept {
   const InterruptLock lock;
-  CLEAR_BIT(RNG->CR, RNG_CR_RNGEN);
-  WRITE_REG(RNG->SR, 0);  // Clears CEIS and SEIS.
-  SET_BIT(RNG->CR, RNG_CR_RNGEN);
+  groov::sync_write(kRng(kRngen = false));
+  // CEIS/SEIS are cleared by writing 0 (groov writes 1 to the other bits).
+  groov::sync_write(kRng(kCeis = false, kSeis = false));
+  groov::sync_write(kRng(kRngen = true));
 }
 
 // Reads one RNG word. Waits for DRDY with interrupts enabled; DRDY is
@@ -53,22 +56,26 @@ void Restart() noexcept {
 // same word (the loser waits for the next one). False after a clock or seed
 // error, with the RNG restarted.
 bool ReadWord(std::uint32_t& word) noexcept {
-  constexpr std::uint32_t kErrors = RNG_SR_SEIS | RNG_SR_CEIS;
   if (!started) {
     return false;
   }
   for (std::uint32_t i = 0; i < kTimeoutPolls; ++i) {
-    if (!WaitFor(RNG->SR, RNG_SR_DRDY | kErrors) ||
-        READ_BIT(RNG->SR, kErrors) != 0) {
+    bool error = false;
+    if (!WaitFor([&] {
+          const auto sr = groov::sync_read(kRng(kDrdy, kCeis, kSeis));
+          error = sr[kCeis] || sr[kSeis];
+          return sr[kDrdy] || error;
+        }) ||
+        error) {
       break;
     }
     const InterruptLock lock;
-    if (READ_BIT(RNG->SR, RNG_SR_DRDY) == 0) {
+    if (!groov::sync_read(kRng / kDrdy)) {
       continue;  // Another thread took it.
     }
-    word = READ_REG(RNG->DR);
+    word = groov::sync_read(kRng / groov::path<"dr", "rndata">{});
     // DR reads 0 when a seed error happened meanwhile (RM0399).
-    if (word == 0 && READ_BIT(RNG->SR, RNG_SR_SEIS) != 0) {
+    if (word == 0 && groov::sync_read(kRng / kSeis)) {
       break;
     }
     fallback_state ^= word;
@@ -81,14 +88,16 @@ bool ReadWord(std::uint32_t& word) noexcept {
 }  // namespace
 
 bool Init() noexcept {
-  SET_BIT(RCC->CR, RCC_CR_HSI48ON);
-  if (!WaitFor(RCC->CR, RCC_CR_HSI48RDY)) {
+  groov::sync_write(kRcc(groov::path<"cr", "hsi48on">{} = true));
+  if (!WaitFor(
+          [] { return groov::sync_read(kRcc / groov::path<"cr", "hsi48rdy">{}); })) {
     return false;
   }
-  CLEAR_BIT(RCC->D2CCIP2R, RCC_D2CCIP2R_RNGSEL);  // HSI48.
-  SET_BIT(RCC->AHB2ENR, RCC_AHB2ENR_RNGEN);
-  static_cast<void>(READ_BIT(RCC->AHB2ENR, RCC_AHB2ENR_RNGEN));
-  SET_BIT(RNG->CR, RNG_CR_RNGEN);
+  groov::sync_write(kRcc(groov::path<"d2ccip2r", "rngsel">{} = 0U));  // HSI48.
+  groov::sync_write(kRcc(groov::path<"ahb2enr", "rngen">{} = true));
+  // Read back: the clock runs before the first RNG access.
+  static_cast<void>(groov::sync_read(kRcc / groov::path<"ahb2enr", "rngen">{}));
+  groov::sync_write(kRng(kRngen = true));
   started = true;
   return true;
 }

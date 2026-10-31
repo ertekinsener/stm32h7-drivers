@@ -1,10 +1,12 @@
 #ifndef STM32H7_DRIVERS_INCLUDE_UART_DETAIL_USART_IMPL_
 #define STM32H7_DRIVERS_INCLUDE_UART_DETAIL_USART_IMPL_
 
-// Definitions of uart::Usart members. Only the per-port translation units
-// (the application's <port>.cc, see docs/uart/README.md) include this file:
-// instantiating groov code is expensive, so everything else uses the extern
-// template declarations next to the application's port descriptors.
+// Definitions of uart::Usart members, with groov on the generated register
+// map (stm32h7::regs::usart). Only the per-port translation units (the
+// application's <port>.cc, see docs/uart/README.md) include this file; they
+// are built with -O2, where groov collapses into plain loads and stores.
+// Everything else uses the extern template declarations next to the
+// application's port descriptors.
 
 #include <groov/groov.hpp>
 #include <stdx/ct_string.hpp>
@@ -17,11 +19,11 @@
 #include <utility>
 
 #include "dma/stream.h"
-#include "hal/gpio.h"
-#include "stm32h7xx.h"
+#include "hal/cortex_m.h"
+#include "hal/detail/gpio_impl.h"
+#include "stm32h7/regs/usart.h"
 #include "uart/detail/baud.h"
 #include "uart/usart.h"
-#include "uart/usart_regs.h"
 
 namespace uart {
 namespace detail {
@@ -33,7 +35,7 @@ inline constexpr std::uintptr_t kTdrOffset = 0x28;
 // groov paths of the USART registers used by the driver.
 template <std::uintptr_t Base>
 struct Paths {
-  static constexpr auto kGroup = regs::usart<Base>;
+  static constexpr auto kGroup = stm32h7::regs::usart::kMap<Base>;
 
   template <stdx::ct_string Field>
   static constexpr groov::path<"cr1", Field> kCr1{};
@@ -83,24 +85,22 @@ void Usart<Port>::Init() noexcept {
   // The pull-up holds TX idle (high) while the transmitter is disabled (before
   // Configure() and while it reconfigures), when the USART does not drive
   // the pin; a floating line shows up as garbage at the terminal.
-  hal::ConfigureAlternate(Port::kTx, hal::Pull::kUp, hal::Speed::kMedium);
+  hal::ConfigureAlternate<Port::kTx>(hal::Pull::kUp, hal::Speed::kMedium);
   // The pull-up keeps an unconnected RX line idle instead of floating.
-  hal::ConfigureAlternate(Port::kRx, hal::Pull::kUp, hal::Speed::kMedium);
+  hal::ConfigureAlternate<Port::kRx>(hal::Pull::kUp, hal::Speed::kMedium);
   if constexpr (Port::kRts.has_value()) {
-    hal::ConfigureAlternate(*Port::kRts, hal::Pull::kNone, hal::Speed::kMedium);
+    hal::ConfigureAlternate<*Port::kRts>(hal::Pull::kNone, hal::Speed::kMedium);
   }
   if constexpr (Port::kCts.has_value()) {
-    hal::ConfigureAlternate(*Port::kCts, hal::Pull::kNone, hal::Speed::kMedium);
+    hal::ConfigureAlternate<*Port::kCts>(hal::Pull::kNone, hal::Speed::kMedium);
   }
 
   // Same priority for the USART and both DMA streams: their handlers never
   // preempt each other, so UpdateRxHead() needs no lock.
   Port::RxDma::Init(Port::kIrqPriority);
   Port::TxDma::Init(Port::kIrqPriority);
-  NVIC_SetPriority(Traits::kIrq,
-                   NVIC_EncodePriority(NVIC_GetPriorityGrouping(),
-                                       Port::kIrqPriority, 0));
-  NVIC_EnableIRQ(Traits::kIrq);
+  hal::cortex_m::SetPriority<Traits::kIrq>(Port::kIrqPriority);
+  hal::cortex_m::EnableIrq<Traits::kIrq>();
 
   tx_ring_.Attach(Port::TxBuffer().template first<Port::kTxBufferSize>());
 }
@@ -235,7 +235,7 @@ std::expected<void, Error> Usart<Port>::Configure(
 
   // Resume TX; HandleIrq() sends whatever was queued meanwhile.
   tx_paused_.store(false);
-  NVIC_SetPendingIRQ(Traits::kIrq);
+  hal::cortex_m::SetPendingIrq<Traits::kIrq>();
   return {};
 }
 
@@ -285,13 +285,10 @@ std::size_t Usart<Port>::Read(std::span<std::uint8_t> data) noexcept {
 template <PortDescriptor Port>
 std::uint32_t Usart<Port>::DmaHead() noexcept {
   const auto size = static_cast<std::uint32_t>(Port::kRxBufferSize);
-  const std::uint32_t primask = __get_PRIMASK();
-  __disable_irq();
+  const hal::cortex_m::InterruptLock lock;
   const std::uint32_t position = (size - Port::RxDma::Remaining()) % size;
-  const std::uint32_t head = rx_head_.load(std::memory_order_relaxed) +
-                             (position + size - rx_dma_position_) % size;
-  __set_PRIMASK(primask);
-  return head;
+  return rx_head_.load(std::memory_order_relaxed) +
+         (position + size - rx_dma_position_) % size;
 }
 
 template <PortDescriptor Port>
@@ -318,7 +315,7 @@ std::expected<void, Error> Usart<Port>::Write(
   // consistent), so either that handler sees it or this write pends the
   // drain itself.
   if (!tx_in_flight_.load()) {
-    NVIC_SetPendingIRQ(Traits::kIrq);
+    hal::cortex_m::SetPendingIrq<Traits::kIrq>();
   }
   return {};
 }

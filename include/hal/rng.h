@@ -7,7 +7,7 @@
 namespace hal::rng {
 
 // The true random number generator (RNG, kernel clock HSI48, the reset
-// selection). Plain CMSIS register access like hal/gpio.h.
+// selection), through the register layer like hal/gpio.h.
 
 // Starts HSI48 and the RNG. Call once before Fill()/Next(); false if HSI48
 // does not start.

@@ -5,26 +5,59 @@
 #include <cstring>
 #include <span>
 
-#include "stm32h7xx.h"
+#include <groov/groov.hpp>
+
+#include "hal/cortex_m.h"
+#include "stm32h7/regs/flash.h"
 
 namespace hal::flash {
 namespace {
 
+using stm32h7::regs::flash::kFlash;
+
 constexpr std::uint32_t kKey1 = 0x45670123;
 constexpr std::uint32_t kKey2 = 0xCDEF89AB;
 
-constexpr std::uint32_t kBusy = FLASH_SR_BSY | FLASH_SR_QW | FLASH_SR_WBNE;
-constexpr std::uint32_t kErrors =
-    FLASH_SR_WRPERR | FLASH_SR_PGSERR | FLASH_SR_STRBERR | FLASH_SR_INCERR |
-    FLASH_SR_OPERR | FLASH_SR_RDPERR | FLASH_SR_RDSERR | FLASH_SR_SNECCERR |
-    FLASH_SR_DBECCERR;
-constexpr std::uint32_t kClearAll =
-    FLASH_CCR_CLR_EOP | FLASH_CCR_CLR_WRPERR | FLASH_CCR_CLR_PGSERR |
-    FLASH_CCR_CLR_STRBERR | FLASH_CCR_CLR_INCERR | FLASH_CCR_CLR_OPERR |
-    FLASH_CCR_CLR_RDPERR | FLASH_CCR_CLR_RDSERR | FLASH_CCR_CLR_SNECCERR |
-    FLASH_CCR_CLR_DBECCERR;
 // 32-bit parallelism: valid at any supply voltage (RM0399, FLASH_CR).
-constexpr std::uint32_t kPsizeX32 = FLASH_CR_PSIZE_1;
+constexpr std::uint8_t kPsizeX32 = 0b10;
+
+template <stdx::ct_string Field>
+constexpr groov::path<"cr2", Field> kCr2{};
+template <stdx::ct_string Field>
+constexpr groov::path<"sr2", Field> kSr2{};
+template <stdx::ct_string Field>
+constexpr groov::path<"ccr2", Field> kCcr2{};
+
+bool IsBusy() noexcept {
+  const auto sr = groov::sync_read(
+      kFlash(kSr2<"bsy2">, kSr2<"qw2">, kSr2<"wbne2">));
+  return sr[kSr2<"bsy2">] || sr[kSr2<"qw2">] || sr[kSr2<"wbne2">];
+}
+
+bool HasError() noexcept {
+  const auto sr = groov::sync_read(kFlash(
+      kSr2<"wrperr2">, kSr2<"pgserr2">, kSr2<"strberr2">, kSr2<"incerr2">,
+      kSr2<"operr2">, kSr2<"rdperr2">, kSr2<"rdserr2">, kSr2<"sneccerr2">,
+      kSr2<"dbeccerr2">));
+  return sr[kSr2<"wrperr2">] || sr[kSr2<"pgserr2">] || sr[kSr2<"strberr2">] ||
+         sr[kSr2<"incerr2">] || sr[kSr2<"operr2">] || sr[kSr2<"rdperr2">] ||
+         sr[kSr2<"rdserr2">] || sr[kSr2<"sneccerr2">] || sr[kSr2<"dbeccerr2">];
+}
+
+// Write 1 to clear: one store.
+void ClearEcc() noexcept {
+  groov::sync_write(kFlash(kCcr2<"clr_sneccerr2"> = true,
+                           kCcr2<"clr_dbeccerr2"> = true));
+}
+
+void ClearAll() noexcept {
+  groov::sync_write(kFlash(
+      kCcr2<"clr_eop2"> = true, kCcr2<"clr_wrperr2"> = true,
+      kCcr2<"clr_pgserr2"> = true, kCcr2<"clr_strberr2"> = true,
+      kCcr2<"clr_incerr2"> = true, kCcr2<"clr_operr2"> = true,
+      kCcr2<"clr_rdperr2"> = true, kCcr2<"clr_rdserr2"> = true,
+      kCcr2<"clr_sneccerr2"> = true, kCcr2<"clr_dbeccerr2"> = true));
+}
 
 // Polls until bank 2 is idle: a flash word takes tens of microseconds, a
 // sector erase up to 4 s (DS12919: t_ERASE128KB). With `yield`, it is
@@ -35,7 +68,7 @@ constexpr std::uint32_t kMaxSpins = 50'000'000;
 bool WaitIdle(Yield yield) noexcept {
   const std::uint32_t limit = yield != nullptr ? kMaxYields : kMaxSpins;
   for (std::uint32_t i = 0; i < limit; ++i) {
-    if (READ_BIT(FLASH->SR2, kBusy) == 0) {
+    if (!IsBusy()) {
       return true;
     }
     if (yield != nullptr) {
@@ -46,13 +79,13 @@ bool WaitIdle(Yield yield) noexcept {
 }
 
 void Unlock() noexcept {
-  if (READ_BIT(FLASH->CR2, FLASH_CR_LOCK) != 0) {
-    WRITE_REG(FLASH->KEYR2, kKey1);
-    WRITE_REG(FLASH->KEYR2, kKey2);
+  if (groov::sync_read(kFlash / kCr2<"lock2">)) {
+    groov::sync_write(kFlash(groov::path<"keyr2", "keyr2">{} = kKey1));
+    groov::sync_write(kFlash(groov::path<"keyr2", "keyr2">{} = kKey2));
   }
 }
 
-void Lock() noexcept { SET_BIT(FLASH->CR2, FLASH_CR_LOCK); }
+void Lock() noexcept { groov::sync_write(kFlash(kCr2<"lock2"> = true)); }
 
 bool InBank2(std::uintptr_t address, std::size_t size) noexcept {
   return address >= kBank2Base &&
@@ -61,8 +94,8 @@ bool InBank2(std::uintptr_t address, std::size_t size) noexcept {
 
 // Ends an operation: locks the bank and reports (then clears) its errors.
 bool Finish(bool idle) noexcept {
-  const bool ok = idle && READ_BIT(FLASH->SR2, kErrors) == 0;
-  WRITE_REG(FLASH->CCR2, kClearAll);
+  const bool ok = idle && !HasError();
+  ClearAll();
   Lock();
   return ok;
 }
@@ -77,17 +110,15 @@ bool EraseBank2Sector(std::size_t sector, Yield yield) noexcept {
   if (!WaitIdle(nullptr)) {
     return Finish(false);
   }
-  WRITE_REG(FLASH->CCR2, kClearAll);
-  MODIFY_REG(FLASH->CR2, FLASH_CR_PSIZE | FLASH_CR_SNB,
-             kPsizeX32 | FLASH_CR_SER |
-                 (static_cast<std::uint32_t>(sector) << FLASH_CR_SNB_Pos));
-  SET_BIT(FLASH->CR2, FLASH_CR_START);
+  ClearAll();
+  groov::sync_write(kFlash(kCr2<"psize2"> = kPsizeX32,
+                           kCr2<"snb2"> = static_cast<std::uint8_t>(sector),
+                           kCr2<"ser2"> = true));
+  groov::sync_write(kFlash(kCr2<"start2"> = true));
   const bool idle = WaitIdle(yield);
-  CLEAR_BIT(FLASH->CR2, FLASH_CR_SER | FLASH_CR_SNB);
+  groov::sync_write(kFlash(kCr2<"ser2"> = false, kCr2<"snb2"> = 0U));
   // The D-cache may still hold the old contents.
-  SCB_InvalidateDCache_by_Addr(
-      reinterpret_cast<void*>(Bank2SectorAddress(sector)),
-      static_cast<std::int32_t>(kSectorSize));
+  cortex_m::InvalidateDCache(Bank2SectorAddress(sector), kSectorSize);
   return Finish(idle);
 }
 
@@ -103,8 +134,8 @@ bool ProgramBank2(std::uintptr_t address,
   if (!WaitIdle(nullptr)) {
     return Finish(false);
   }
-  WRITE_REG(FLASH->CCR2, kClearAll);
-  MODIFY_REG(FLASH->CR2, FLASH_CR_PSIZE, kPsizeX32 | FLASH_CR_PG);
+  ClearAll();
+  groov::sync_write(kFlash(kCr2<"psize2"> = kPsizeX32, kCr2<"pg2"> = true));
   // Eight 32-bit stores fill the write buffer; the programming starts once
   // it holds the whole flash word.
   volatile std::uint32_t* const target =
@@ -112,12 +143,11 @@ bool ProgramBank2(std::uintptr_t address,
   for (std::size_t i = 0; i < kFlashWord / 4; ++i) {
     target[i] = words[i];
   }
-  __ISB();
-  __DSB();
+  cortex_m::Isb();
+  cortex_m::Dsb();
   const bool idle = WaitIdle(nullptr);
-  CLEAR_BIT(FLASH->CR2, FLASH_CR_PG);
-  SCB_InvalidateDCache_by_Addr(reinterpret_cast<void*>(address),
-                               static_cast<std::int32_t>(kFlashWord));
+  groov::sync_write(kFlash(kCr2<"pg2"> = false));
+  cortex_m::InvalidateDCache(address, kFlashWord);
   return Finish(idle);
 }
 
@@ -125,31 +155,30 @@ bool ReadBank2(std::uintptr_t address, std::span<std::uint8_t> out) noexcept {
   if (!InBank2(address, out.size())) {
     return false;
   }
-  WRITE_REG(FLASH->CCR2, FLASH_CCR_CLR_DBECCERR | FLASH_CCR_CLR_SNECCERR);
+  ClearEcc();
   // With FAULTMASK set, BFHFNMIGN makes the core ignore the bus error of a
   // load from a flash word with a double ECC error (the data is garbage
   // then, and DBECCERR tells).
-  const std::uint32_t faultmask = __get_FAULTMASK();
-  __set_FAULTMASK(1);
-  SCB->CCR |= SCB_CCR_BFHFNMIGN_Msk;
-  __DSB();
-  __ISB();
+  const std::uint32_t faultmask = cortex_m::GetFaultmask();
+  cortex_m::SetFaultmask(1);
+  cortex_m::SetBusFaultIgnore(true);
+  cortex_m::Dsb();
+  cortex_m::Isb();
   const volatile std::uint8_t* const source =
       reinterpret_cast<const volatile std::uint8_t*>(address);
   for (std::size_t i = 0; i < out.size(); ++i) {
     out[i] = source[i];
   }
-  __DSB();
-  const bool ecc_error = READ_BIT(FLASH->SR2, FLASH_SR_DBECCERR) != 0;
-  SCB->CCR &= ~SCB_CCR_BFHFNMIGN_Msk;
-  __DSB();
-  __ISB();
-  __set_FAULTMASK(faultmask);
+  cortex_m::Dsb();
+  const bool ecc_error = groov::sync_read(kFlash / kSr2<"dbeccerr2">);
+  cortex_m::SetBusFaultIgnore(false);
+  cortex_m::Dsb();
+  cortex_m::Isb();
+  cortex_m::SetFaultmask(faultmask);
   if (ecc_error) {
-    WRITE_REG(FLASH->CCR2, FLASH_CCR_CLR_DBECCERR | FLASH_CCR_CLR_SNECCERR);
+    ClearEcc();
     // A cached copy of the bad word must not hide the error next time.
-    SCB_InvalidateDCache_by_Addr(reinterpret_cast<void*>(address),
-                                 static_cast<std::int32_t>(out.size()));
+    cortex_m::InvalidateDCache(address, out.size());
   }
   return !ecc_error;
 }

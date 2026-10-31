@@ -1,10 +1,12 @@
 #ifndef STM32H7_DRIVERS_INCLUDE_DMA_DETAIL_STREAM_IMPL_
 #define STM32H7_DRIVERS_INCLUDE_DMA_DETAIL_STREAM_IMPL_
 
-// Definitions of dma::Stream members. Only the generated per-stream
-// translation units (cmake/stream_instance.cc.in) include this file:
-// instantiating it is expensive (~25 s and ~2 GB RAM per stream with groov),
-// so everything else uses the extern template declarations in dma/stream.h.
+// Definitions of dma::Stream members, with groov on the generated register
+// maps (stm32h7::regs::dma). Only the generated per-stream translation units
+// (cmake/stm32h7_drivers/stream_instance.cc.in) include this file; they are
+// built with -O2, where groov collapses into plain loads and stores.
+// Everything else uses the extern template declarations in dma/stream.h, so
+// only the streams in use are linked.
 
 #include <groov/groov.hpp>
 #include <stdx/ct_string.hpp>
@@ -15,7 +17,8 @@
 
 #include "dma/dmamux.h"
 #include "dma/stream.h"
-#include "stm32h7xx.h"
+#include "hal/cortex_m.h"
+#include "stm32h7/regs/rcc.h"
 
 namespace dma {
 namespace detail {
@@ -62,13 +65,12 @@ constexpr bool IsValid(const Config& config) noexcept {
 
 template <Controller C, std::uint8_t N>
 void Stream<C, N>::Init(std::uint32_t irq_priority) noexcept {
-  SET_BIT(RCC->AHB1ENR, Traits::kClockEnable);
+  constexpr groov::path<"ahb1enr", Traits::kClockEnable> kEnable{};
+  groov::sync_write(stm32h7::regs::rcc::kRcc(kEnable = true));
   // Read back so the clock is running before the first register access.
-  static_cast<void>(READ_BIT(RCC->AHB1ENR, Traits::kClockEnable));
-  NVIC_SetPriority(
-      Traits::kIrq,
-      NVIC_EncodePriority(NVIC_GetPriorityGrouping(), irq_priority, 0));
-  NVIC_EnableIRQ(Traits::kIrq);
+  static_cast<void>(groov::sync_read(stm32h7::regs::rcc::kRcc / kEnable));
+  hal::cortex_m::SetPriority<Traits::kIrq>(irq_priority);
+  hal::cortex_m::EnableIrq<Traits::kIrq>();
 }
 
 template <Controller C, std::uint8_t N>

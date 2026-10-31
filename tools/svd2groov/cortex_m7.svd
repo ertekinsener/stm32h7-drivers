@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cortex-M7 System Control Space registers used by stm32h7-drivers, which the
+  device SVD does not describe. From the ARMv7-M Architecture Reference
+  Manual (B3.2 System Control Space, B3.4 NVIC) and the Cortex-M7 TRM; the
+  same addresses as CMSIS core_cm7.h. Only what the drivers use.
+-->
+<device schemaVersion="1.1">
+  <name>CORTEX_M7_SCS</name>
+  <width>32</width>
+  <size>0x20</size>
+  <access>read-write</access>
+  <peripherals>
+    <peripheral>
+      <name>NVIC</name>
+      <baseAddress>0xE000E100</baseAddress>
+      <registers>
+        <!-- Writing 1 enables / pends an interrupt, 0 has no effect. -->
+        <register>
+          <dim>8</dim>
+          <dimIncrement>0x4</dimIncrement>
+          <name>ISER%s</name>
+          <addressOffset>0x000</addressOffset>
+          <access>write-only</access>
+          <fields>
+            <field>
+              <name>SETENA</name>
+              <bitOffset>0</bitOffset>
+              <bitWidth>32</bitWidth>
+              <modifiedWriteValues>oneToSet</modifiedWriteValues>
+            </field>
+          </fields>
+        </register>
+        <register>
+          <dim>8</dim>
+          <dimIncrement>0x4</dimIncrement>
+          <name>ISPR%s</name>
+          <addressOffset>0x100</addressOffset>
+          <access>write-only</access>
+          <fields>
+            <field>
+              <name>SETPEND</name>
+              <bitOffset>0</bitOffset>
+              <bitWidth>32</bitWidth>
+              <modifiedWriteValues>oneToSet</modifiedWriteValues>
+            </field>
+          </fields>
+        </register>
+      </registers>
+    </peripheral>
+    <!-- One byte per interrupt; byte accesses (NVIC_IPRn is byte-accessible). -->
+    <peripheral>
+      <name>NVIC_IPR</name>
+      <baseAddress>0xE000E400</baseAddress>
+      <registers>
+        <register>
+          <dim>150</dim>
+          <dimIncrement>0x1</dimIncrement>
+          <name>IP%s</name>
+          <addressOffset>0x0</addressOffset>
+          <size>8</size>
+          <fields>
+            <field>
+              <name>PRI</name>
+              <bitOffset>0</bitOffset>
+              <bitWidth>8</bitWidth>
+            </field>
+          </fields>
+        </register>
+      </registers>
+    </peripheral>
+    <peripheral>
+      <name>SCB</name>
+      <baseAddress>0xE000ED00</baseAddress>
+      <registers>
+        <register>
+          <name>AIRCR</name>
+          <addressOffset>0x00C</addressOffset>
+          <fields>
+            <field><name>VECTRESET</name><bitOffset>0</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>VECTCLRACTIVE</name><bitOffset>1</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>SYSRESETREQ</name><bitOffset>2</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>PRIGROUP</name><bitOffset>8</bitOffset><bitWidth>3</bitWidth></field>
+            <field><name>ENDIANNESS</name><bitOffset>15</bitOffset><bitWidth>1</bitWidth><access>read-only</access></field>
+            <field><name>VECTKEY</name><bitOffset>16</bitOffset><bitWidth>16</bitWidth></field>
+          </fields>
+        </register>
+        <register>
+          <name>CCR</name>
+          <addressOffset>0x014</addressOffset>
+          <fields>
+            <field><name>NONBASETHRDENA</name><bitOffset>0</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>USERSETMPEND</name><bitOffset>1</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>UNALIGN_TRP</name><bitOffset>3</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>DIV_0_TRP</name><bitOffset>4</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>BFHFNMIGN</name><bitOffset>8</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>STKALIGN</name><bitOffset>9</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>DC</name><bitOffset>16</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>IC</name><bitOffset>17</bitOffset><bitWidth>1</bitWidth></field>
+            <field><name>BP</name><bitOffset>18</bitOffset><bitWidth>1</bitWidth></field>
+          </fields>
+        </register>
+        <!-- D-cache invalidate by address to the point of coherency. -->
+        <register>
+          <name>DCIMVAC</name>
+          <addressOffset>0x25C</addressOffset>
+          <access>write-only</access>
+          <fields>
+            <field><name>ADDRESS</name><bitOffset>0</bitOffset><bitWidth>32</bitWidth></field>
+          </fields>
+        </register>
+      </registers>
+    </peripheral>
+  </peripherals>
+</device>

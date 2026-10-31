@@ -1,5 +1,8 @@
-// Compile-time checks of the UART instance descriptions against the CMSIS
-// device header and of the baud rate arithmetic. No runtime code.
+// Compile-time checks of the UART instance descriptions against RM0399
+// (memory map, NVIC vector table) and of the baud rate arithmetic. No
+// runtime code.
+
+#include <utility>
 
 #include "dma/types.h"
 #include "uart/detail/baud.h"
@@ -13,12 +16,16 @@ using uart::detail::ComputeBrr;
 using uart::detail::InstanceTraits;
 
 static_assert(InstanceTraits<Instance::kUsart3>::kBase == 0x4000'4800U);
-static_assert(InstanceTraits<Instance::kUsart3>::kIrq == USART3_IRQn);
+static_assert(std::to_underlying(InstanceTraits<Instance::kUsart3>::kIrq) ==
+              39);
 static_assert(InstanceTraits<Instance::kUsart3>::kRxRequest ==
               dma::Request::kUsart3Rx);
 static_assert(InstanceTraits<Instance::kUsart1>::kInfo.domain ==
               uart::detail::ClockDomain::kApb2);
-static_assert(InstanceTraits<Instance::kUart8>::kIrq == UART8_IRQn);
+static_assert(std::to_underlying(InstanceTraits<Instance::kUart8>::kIrq) ==
+              83);
+static_assert(std::to_underlying(InstanceTraits<Instance::kUsart6>::kIrq) ==
+              71);
 static_assert(InstanceTraits<Instance::kUsart6>::kBase == 0x4001'1400U);
 
 // 100 MHz kernel clock (D2 PCLK1).

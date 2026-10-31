@@ -1,0 +1,49 @@
+@startuml architecture
+' Layers of stm32h7-drivers. Register access is groov on maps generated from
+' the SVD. The driver code that contains groov is built with -O2; the public
+' headers have no groov. Arrows: "uses" (calls / includes).
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+package "application (project flags)" {
+  [firmware, main] as app
+  [board ports: <port>.cc\n(port descriptors, buffers,\nexplicit instantiation, IRQ handler)] as ports
+}
+
+package "public driver headers (no groov)" {
+  [uart/usart.h, uart/threadx_serial.h] as uart_h
+  [dma/stream.h, dma/tx_completion.h] as dma_h
+  [hal/gpio.h, flash.h, rng.h, rcc.h] as hal_h
+}
+
+package "driver code with groov (always -O2, groov_compile pool)" {
+  [uart/detail/usart_impl.h\n(in the port sources)] as uart_impl
+  [dma/detail/stream_impl.h\n(in the generated stream sources)] as dma_impl
+  [source/hal/*.cc\nhal/cortex_m.h, hal/detail/gpio_impl.h] as hal_impl
+}
+
+package "generated (tools/svd2groov)" {
+  [include/stm32h7/regs/*.h\ngroov::group per peripheral\n(kMap<Base>, kDma1, kUsart3, ...)] as maps
+  [include/stm32h7/irq.h\nstm32h7::Irq] as irq
+}
+
+[groov (stdx, async, conc)\nhal::WordMmioBus, InterruptLockPolicy] as groov
+[STM32H755_CM7.svd, cortex_m7.svd\nstm32h7.toml (corrections)] as svd
+
+app --> uart_h
+app --> dma_h
+app --> hal_h
+ports --> uart_impl
+uart_impl --> dma_h
+uart_impl --> hal_impl
+dma_impl --> hal_impl
+uart_impl --> maps
+dma_impl --> maps
+hal_impl --> maps
+hal_impl --> irq
+maps --> groov
+svd ..> maps : generates
+svd ..> irq : generates
+
+@enduml
