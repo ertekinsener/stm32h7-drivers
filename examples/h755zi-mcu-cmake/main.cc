@@ -1,6 +1,7 @@
 // Cortex-M7 firmware of the example: ThreadX with one thread that writes a
 // line to the ST-LINK virtual COM port (USART3, 115200 8N1) every second
-// through uart::ThreadxSerial.
+// through uart::ThreadxSerial and blinks LD1; the user button B1 toggles
+// LD2 from its EXTI interrupt.
 //
 // Runs on the reset clock (HSI 64 MHz) with the D-cache off, so the DMA
 // buffers in D2 SRAM need no MPU setup yet. The Ethernet driver (board::eth)
@@ -12,6 +13,7 @@
 #include <span>
 #include <string_view>
 
+#include "board/pins.h"
 #include "board/ports.h"
 #include "stm32h7xx_hal.h"
 #include "tx_api.h"
@@ -34,6 +36,7 @@ constexpr std::uint32_t kSvCallPriority = 15;
 constexpr std::uint32_t kSysTickPriority = 4;
 
 constexpr UINT kHelloPriority = 10;
+constexpr std::uint32_t kButtonIrqPriority = 8;
 
 // Set by _tx_initialize_low_level(). HAL_Init() starts SysTick before the
 // kernel exists, and _tx_timer_interrupt() must not run until then.
@@ -44,15 +47,24 @@ uart::ThreadxSerial<uart::Usart3Vcp> console;
 TX_THREAD hello_thread;
 std::array<ULONG, 256> hello_stack;
 
+void OnButton(void* /*context*/) noexcept { board::Ld2::Toggle(); }
+
 void HelloEntry(ULONG /*input*/) {
   if (!console.Create("vcp") || !console.Configure({.baud_rate = 115'200})) {
     __builtin_trap();
   }
+  board::Ld1::ConfigureOutput();
+  board::Ld2::ConfigureOutput();
+  board::Button::ConfigureInput(gpio::Pull::kDown);  // High when pressed.
+  board::ButtonInterrupt::Configure(exti::Edge::kRising, {&OnButton, nullptr},
+                                    kButtonIrqPriority);
+
   constexpr std::string_view kLine = "stm32h7-drivers on mcu-cmake\r\n";
   const std::span<const std::uint8_t> line{
       reinterpret_cast<const std::uint8_t*>(kLine.data()), kLine.size()};
   while (true) {
     static_cast<void>(console.Write(line, TX_WAIT_FOREVER));
+    board::Ld1::Toggle();
     tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND);
   }
 }

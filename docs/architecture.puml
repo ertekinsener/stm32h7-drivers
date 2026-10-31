@@ -9,18 +9,21 @@ skinparam shadowing false
 package "application (project flags)" {
   [firmware, main] as app
   [board ports: <port>.cc\n(port descriptors, buffers,\nexplicit instantiation, IRQ handler)] as ports
+  [board pins: pins.cc, interrupts.cc\n(explicit instantiation)] as pins
 }
 
 package "public driver headers (no groov)" {
   [uart/usart.h, uart/threadx_serial.h] as uart_h
   [dma/stream.h, dma/tx_completion.h] as dma_h
-  [hal/gpio.h, flash.h, rng.h, rcc.h] as hal_h
+  [gpio/gpio.h, exti/exti.h] as gpio_h
+  [hal/flash.h, rng.h, rcc.h, gpio.h] as hal_h
 }
 
 package "driver code with groov (always -O2, groov_compile pool)" {
   [uart/detail/usart_impl.h\n(in the port sources)] as uart_impl
   [dma/detail/stream_impl.h\n(in the generated stream sources)] as dma_impl
-  [source/hal/*.cc\nhal/cortex_m.h, hal/detail/gpio_impl.h] as hal_impl
+  [gpio/detail/pin_impl.h, exti/detail/exti_impl.h\nsource/gpio, source/exti] as gpio_impl
+  [source/hal/*.cc\nhal/cortex_m.h] as hal_impl
 }
 
 package "generated (tools/svd2groov)" {
@@ -34,7 +37,12 @@ package "generated (tools/svd2groov)" {
 app --> uart_h
 app --> dma_h
 app --> hal_h
+app --> gpio_h
+pins --> gpio_impl
 ports --> uart_impl
+uart_impl --> gpio_impl
+gpio_impl --> maps
+gpio_impl --> hal_impl
 uart_impl --> dma_h
 uart_impl --> hal_impl
 dma_impl --> hal_impl

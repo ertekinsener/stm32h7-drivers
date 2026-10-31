@@ -403,7 +403,9 @@ class GroovMap:
                 "constexpr auto kMap =",
                 f'    groov::group<"{self.name}", {self.config["bus"]},\n'
                 + ",\n".join(register(r) for r in self.registers) + ">{};",
-                ""]
+                "",
+                "// One constant per instance. groov groups are empty types: an unused",
+                "// constant costs no flash or RAM, only the code that names it does."]
         for instance, base in self.instances:
             constant = _constant(instance)
             body.append(f"inline constexpr std::uintptr_t {constant}Base = 0x{base:08x}u;")

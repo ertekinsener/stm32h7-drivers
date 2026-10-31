@@ -1,7 +1,8 @@
 # stm32h7-drivers with mcu-cmake (https://github.com/ertekinsener/mcu-cmake):
 # the Cortex-M7 of an STM32H755ZI (NUCLEO-H755ZI-Q) under ThreadX, with the
 # DMA driver, the ST-LINK virtual COM port (USART3) through
-# uart::ThreadxSerial and a NetX Duo IP instance on the Ethernet driver.
+# uart::ThreadxSerial, the GPIO and EXTI drivers (LEDs, user button) and the
+# Ethernet driver.
 #
 #   export MCU_CMAKE_PATH=<mcu-cmake checkout>
 #   cmake --preset debug
@@ -115,6 +116,16 @@ threadx_add_kernel(board::rtos
 threadx_add_netxduo(board::netx KERNEL board::rtos)
 
 stm32h7_drivers_add_hal(board::drivers_hal CHIP stm32::H755ZI::CM7)
+stm32h7_drivers_add_gpio(board::gpio
+  CHIP stm32::H755ZI::CM7
+  CONFIG board::config
+  INSTANCES board/pins.cc   # LD1, LD2, B1
+)
+stm32h7_drivers_add_exti(board::exti
+  GPIO board::gpio
+  CONFIG board::config
+  INSTANCES board/interrupts.cc   # B1
+)
 stm32h7_drivers_add_dma(board::dma
   HAL board::drivers_hal
   DMA_BUFFER_REGION RAM_D2
@@ -137,6 +148,7 @@ add_executable(firmware main.cc)
 target_link_libraries(firmware PRIVATE
   board::startup
   board::uart
+  board::exti
   board::eth
   mcu::cxx_bare_metal
   mcu::newlib_nano

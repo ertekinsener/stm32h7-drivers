@@ -319,6 +319,8 @@ constexpr auto kMap =
         groov::reg<"ip149", std::uint8_t, Base + 0x095u, groov::w::replace,
             groov::field<"pri", std::uint8_t, 7u, 0u, groov::w::replace>>>{};
 
+// One constant per instance. groov groups are empty types: an unused
+// constant costs no flash or RAM, only the code that names it does.
 inline constexpr std::uintptr_t kNvicIprBase = 0xe000e400u;
 inline constexpr auto kNvicIpr = kMap<kNvicIprBase>;
 

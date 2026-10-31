@@ -16,8 +16,18 @@
 #     GIT_TAG <tag|commit>          # needed by the UART driver (ring::MpscRing)
 #     [GIT_REPOSITORY <url>])       # default: ertekinsener/embedded-core
 #
-#   stm32h7_drivers_add_hal(<name>          # hal/: GPIO, flash, RNG, RCC,
+#   stm32h7_drivers_add_hal(<name>          # hal/: flash, RNG, RCC,
 #     CHIP <mcu_add_chip() target>)         # NVIC/SCB; one H7 core
+#
+#   stm32h7_drivers_add_gpio(<name>         # gpio::Pin, gpio::PortPins
+#     CHIP <mcu_add_chip() target>
+#     [CONFIG <target>]                     # board pin definitions (headers)
+#     [INSTANCES <source>...])              # the application's pin instances
+#
+#   stm32h7_drivers_add_exti(<name>         # exti::Line, exti::PinInterrupt,
+#     GPIO <stm32h7_drivers_add_gpio() target>  # EXTI0..15 handlers
+#     [CONFIG <target>]
+#     [INSTANCES <source>...])
 #
 #   stm32h7_drivers_add_dma(<name>          # dma::Stream
 #     HAL <stm32h7_drivers_add_hal() target>
@@ -301,7 +311,6 @@ function(stm32h7_drivers_add_hal name)
   get_property(root GLOBAL PROPERTY STM32H7_DRIVERS_ROOT)
   mcu_add_named_library(${name} STATIC target
     "${root}/source/hal/flash.cc"
-    "${root}/source/hal/gpio.cc"
     "${root}/source/hal/rcc.cc"
     "${root}/source/hal/rng.cc"
   )
@@ -314,6 +323,68 @@ function(stm32h7_drivers_add_hal name)
     STM32H7_DRIVERS_KIND hal
     STM32H7_DRIVERS_CHIP ${arg_CHIP}
   )
+endfunction()
+
+# Absolute paths of the application's instance sources.
+function(_stm32h7_drivers_sources out_var)
+  set(sources "")
+  foreach(source IN LISTS ARGN)
+    cmake_path(ABSOLUTE_PATH source BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    list(APPEND sources "${source}")
+  endforeach()
+  set(${out_var} "${sources}" PARENT_SCOPE)
+endfunction()
+
+function(stm32h7_drivers_add_gpio name)
+  cmake_parse_arguments(PARSE_ARGV 1 arg "" "CHIP;CONFIG" "INSTANCES")
+  set(context "stm32h7_drivers_add_gpio(${name})")
+  if(arg_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR "${context}: unexpected arguments: ${arg_UNPARSED_ARGUMENTS}")
+  endif()
+  _stm32h7_drivers_require_chip("${context}" "${arg_CHIP}")
+  if(NOT TARGET stm32h7_drivers::groov)
+    message(FATAL_ERROR "${context}: call stm32h7_drivers_fetch_groov(GIT_TAG <commit>) first")
+  endif()
+  if(arg_CONFIG AND NOT TARGET ${arg_CONFIG})
+    message(FATAL_ERROR "${context}: CONFIG '${arg_CONFIG}' is not a target")
+  endif()
+
+  get_property(root GLOBAL PROPERTY STM32H7_DRIVERS_ROOT)
+  _stm32h7_drivers_sources(instances ${arg_INSTANCES})
+  mcu_add_named_library(${name} STATIC target "${root}/source/gpio/gpio.cc" ${instances})
+  target_include_directories(${target} PUBLIC "${root}/include")
+  target_compile_features(${target} PUBLIC cxx_std_23)
+  target_link_libraries(${target} PUBLIC ${arg_CHIP} ${arg_CONFIG})
+  _stm32h7_drivers_groov_code(${target})
+  _stm32h7_drivers_own_code(${target})
+  set_target_properties(${target} PROPERTIES
+    STM32H7_DRIVERS_KIND gpio
+    STM32H7_DRIVERS_CHIP ${arg_CHIP}
+  )
+endfunction()
+
+function(stm32h7_drivers_add_exti name)
+  cmake_parse_arguments(PARSE_ARGV 1 arg "" "GPIO;CONFIG" "INSTANCES")
+  set(context "stm32h7_drivers_add_exti(${name})")
+  if(arg_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR "${context}: unexpected arguments: ${arg_UNPARSED_ARGUMENTS}")
+  endif()
+  _stm32h7_drivers_require_kind("${context}" GPIO "${arg_GPIO}" gpio)
+  if(arg_CONFIG AND NOT TARGET ${arg_CONFIG})
+    message(FATAL_ERROR "${context}: CONFIG '${arg_CONFIG}' is not a target")
+  endif()
+
+  get_property(root GLOBAL PROPERTY STM32H7_DRIVERS_ROOT)
+  _stm32h7_drivers_sources(instances ${arg_INSTANCES})
+  set(sources "${root}/source/exti/exti.cc")
+  foreach(irq IN ITEMS exti0 exti1 exti2 exti3 exti4 exti9_5 exti15_10)
+    list(APPEND sources "${root}/source/exti/${irq}_irq.cc")
+  endforeach()
+  mcu_add_named_library(${name} STATIC target ${sources} ${instances})
+  target_link_libraries(${target} PUBLIC ${arg_GPIO} ${arg_CONFIG})
+  _stm32h7_drivers_groov_code(${target})
+  _stm32h7_drivers_own_code(${target})
+  set_target_properties(${target} PROPERTIES STM32H7_DRIVERS_KIND exti)
 endfunction()
 
 function(stm32h7_drivers_add_dma name)

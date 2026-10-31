@@ -3,22 +3,17 @@
 
 #include <cstdint>
 
+#include "gpio/gpio.h"
+
 namespace hal {
 
-// GPIO pins. A pin known at compile time is configured with
-// ConfigureAlternate<pin>() (hal/detail/gpio_impl.h, groov with named fields,
-// used by the drivers); the functions here take a pin at runtime.
+// Compatibility with the first GPIO helpers, used by the U(S)ART port
+// descriptors: a pin together with its alternate function. New code uses
+// the gpio driver (gpio/gpio.h); these forward to it.
 
-enum class Port : std::uint8_t { kA, kB, kC, kD, kE, kF, kG, kH, kI, kJ, kK };
-
-enum class Pull : std::uint8_t { kNone = 0b00, kUp = 0b01, kDown = 0b10 };
-
-enum class Speed : std::uint8_t {
-  kLow = 0b00,
-  kMedium = 0b01,
-  kHigh = 0b10,
-  kVeryHigh = 0b11,
-};
+using gpio::Port;
+using gpio::Pull;
+using gpio::Speed;
 
 struct Pin {
   Port port;

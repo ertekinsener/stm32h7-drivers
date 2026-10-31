@@ -99,7 +99,7 @@ instances = ["GPIOA", "GPIOB", "GPIOC", "GPIOD", "GPIOE", "GPIOF", "GPIOG",
 name = "rcc"
 instances = ["RCC"]
 registers = ["CR", "D1CFGR", "D2CFGR", "D2CCIP2R", "AHB1ENR", "AHB2ENR",
-             "AHB4ENR", "APB1LENR", "APB2ENR"]
+             "AHB4ENR", "APB1LENR", "APB2ENR", "APB4ENR"]
 [map.rename]
 "CR.RC48ON" = "HSI48ON"
 "CR.RC48RDY" = "HSI48RDY"
@@ -109,6 +109,24 @@ registers = ["CR", "D1CFGR", "D2CFGR", "D2CCIP2R", "AHB1ENR", "AHB2ENR",
 "APB1LENR.WWDG2EN" = { bit = 11 }
 [map.access]
 "CR.*RDY" = "read_only"
+
+# EXTI (RM0399, EXTI registers): lines 0..31 (register set 1), the
+# interrupt/event masks and pending flags of both cores (C1* for the CM7,
+# C2* for the CM4). The SVD makes the pending registers read-write; they
+# are cleared by writing 1 (rc_w1).
+[[map]]
+name = "exti"
+instances = ["EXTI"]
+registers = ["RTSR1", "FTSR1", "SWIER1", "C1IMR1", "C1EMR1", "C1PR1",
+             "C2IMR1", "C2EMR1", "C2PR1"]
+[map.access]
+"C?PR1" = "read_one_to_clear"
+
+# SYSCFG (RM0399, SYSCFG registers): the GPIO port of EXTI lines 0..15.
+[[map]]
+name = "syscfg"
+instances = ["SYSCFG"]
+registers = ["EXTICR?"]
 
 # RNG (RM0399, RNG registers): CEIS/SEIS are cleared by writing 0 (rc_w0).
 [[map]]

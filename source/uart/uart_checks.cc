@@ -2,6 +2,7 @@
 // (memory map, NVIC vector table) and of the baud rate arithmetic. No
 // runtime code.
 
+#include <string_view>
 #include <utility>
 
 #include "dma/types.h"
@@ -27,6 +28,10 @@ static_assert(std::to_underlying(InstanceTraits<Instance::kUart8>::kIrq) ==
 static_assert(std::to_underlying(InstanceTraits<Instance::kUsart6>::kIrq) ==
               71);
 static_assert(InstanceTraits<Instance::kUsart6>::kBase == 0x4001'1400U);
+static_assert(std::string_view{uart::detail::ClockEnableField<Instance::kUsart6>()} ==
+              "usart6en");
+static_assert(std::string_view{uart::detail::ClockEnableField<Instance::kUart7>()} ==
+              "uart7en");
 
 // 100 MHz kernel clock (D2 PCLK1).
 static_assert(ComputeBrr(100'000'000, 115'200, Oversampling::kBy16) == 868);

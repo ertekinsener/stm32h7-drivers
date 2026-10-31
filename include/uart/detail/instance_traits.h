@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "dma/types.h"
+#include "hal/detail/ct_name.h"
 #include "hal/rcc.h"
 #include "stm32h7/irq.h"
 #include "stm32h7/regs/rcc.h"
@@ -26,60 +27,53 @@ struct InstanceInfo {
   dma::Request rx_request;
   dma::Request tx_request;
   ClockDomain domain;
+  // USARTn or UARTn: the name of the bus clock enable field ("usart3en").
+  bool usart;
+  std::uint8_t number;
 };
 
 consteval InstanceInfo Describe(Instance instance) {
   namespace r = stm32h7::regs::usart;
   using enum stm32h7::Irq;
+  using enum ClockDomain;
   switch (instance) {
     case Instance::kUsart1:
       return {r::kUsart1Base, kUsart1, dma::Request::kUsart1Rx,
-              dma::Request::kUsart1Tx, ClockDomain::kApb2};
+              dma::Request::kUsart1Tx, kApb2, true, 1};
     case Instance::kUsart2:
       return {r::kUsart2Base, kUsart2, dma::Request::kUsart2Rx,
-              dma::Request::kUsart2Tx, ClockDomain::kApb1};
+              dma::Request::kUsart2Tx, kApb1, true, 2};
     case Instance::kUsart3:
       return {r::kUsart3Base, kUsart3, dma::Request::kUsart3Rx,
-              dma::Request::kUsart3Tx, ClockDomain::kApb1};
+              dma::Request::kUsart3Tx, kApb1, true, 3};
     case Instance::kUart4:
       return {r::kUart4Base, kUart4, dma::Request::kUart4Rx,
-              dma::Request::kUart4Tx, ClockDomain::kApb1};
+              dma::Request::kUart4Tx, kApb1, false, 4};
     case Instance::kUart5:
       return {r::kUart5Base, kUart5, dma::Request::kUart5Rx,
-              dma::Request::kUart5Tx, ClockDomain::kApb1};
+              dma::Request::kUart5Tx, kApb1, false, 5};
     case Instance::kUsart6:
       return {r::kUsart6Base, kUsart6, dma::Request::kUsart6Rx,
-              dma::Request::kUsart6Tx, ClockDomain::kApb2};
+              dma::Request::kUsart6Tx, kApb2, true, 6};
     case Instance::kUart7:
       return {r::kUart7Base, kUart7, dma::Request::kUart7Rx,
-              dma::Request::kUart7Tx, ClockDomain::kApb1};
+              dma::Request::kUart7Tx, kApb1, false, 7};
     case Instance::kUart8:
       return {r::kUart8Base, kUart8, dma::Request::kUart8Rx,
-              dma::Request::kUart8Tx, ClockDomain::kApb1};
+              dma::Request::kUart8Tx, kApb1, false, 8};
   }
   std::unreachable();
 }
 
-// The bus clock enable field of an instance, in RCC_APB2ENR (USART1/6) or
-// RCC_APB1LENR.
+// The bus clock enable field of an instance, from its table entry:
+// "usart1en" .. "uart8en", in RCC_APB2ENR (kApb2) or RCC_APB1LENR.
 template <Instance I>
 consteval auto ClockEnableField() {
-  if constexpr (I == Instance::kUsart1) {
-    return stdx::ct_string{"usart1en"};
-  } else if constexpr (I == Instance::kUsart2) {
-    return stdx::ct_string{"usart2en"};
-  } else if constexpr (I == Instance::kUsart3) {
-    return stdx::ct_string{"usart3en"};
-  } else if constexpr (I == Instance::kUart4) {
-    return stdx::ct_string{"uart4en"};
-  } else if constexpr (I == Instance::kUart5) {
-    return stdx::ct_string{"uart5en"};
-  } else if constexpr (I == Instance::kUsart6) {
-    return stdx::ct_string{"usart6en"};
-  } else if constexpr (I == Instance::kUart7) {
-    return stdx::ct_string{"uart7en"};
+  constexpr InstanceInfo kInfo = Describe(I);
+  if constexpr (kInfo.usart) {
+    return hal::detail::Name<"usart", kInfo.number, "en">();
   } else {
-    return stdx::ct_string{"uart8en"};
+    return hal::detail::Name<"uart", kInfo.number, "en">();
   }
 }
 

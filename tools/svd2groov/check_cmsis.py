@@ -38,6 +38,10 @@ MAPS = {
     "dma": ("DMA", lambda r, f: (re.sub(r"^S[0-7]", "Sx", r), f)),
     "dmamux1": ("DMAMUX", lambda r, f: (re.sub(r"^C[0-9]+", "Cx", r), f)),
     "scb": ("SCB", lambda r, f: (r, f)),
+    "syscfg": ("SYSCFG", lambda r, f: (r, f)),
+    # CMSIS names the mask bits IM/EM: C1IMR1.MR3 -> EXTI_IMR1_IM3.
+    "exti": ("EXTI", lambda r, f: (re.sub(r"^C[12]", "", r),
+                                   re.sub(r"^MR", "IM" if "IMR" in r else "EM", f))),
 }
 
 

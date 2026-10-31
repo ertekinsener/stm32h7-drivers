@@ -37,6 +37,8 @@ constexpr auto kMap =
         groov::reg<"dcimvac", std::uint32_t, Base + 0x25cu, groov::write_only<groov::w::replace>,
             groov::field<"address", std::uint32_t, 31u, 0u, groov::write_only<groov::w::replace>>>>{};
 
+// One constant per instance. groov groups are empty types: an unused
+// constant costs no flash or RAM, only the code that names it does.
 inline constexpr std::uintptr_t kScbBase = 0xe000ed00u;
 inline constexpr auto kScb = kMap<kScbBase>;
 

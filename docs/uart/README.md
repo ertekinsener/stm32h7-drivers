@@ -70,7 +70,7 @@ in the interrupt handler.
 
 | File | Purpose |
 |---|---|
-| `hal/gpio.h`, `source/hal/gpio.cc` | `hal::Pin {port, number, alternate}` and `ConfigureAlternate(pin, Pull, Speed)`: enables the GPIO port clock and sets push-pull alternate-function mode. `ConfigureAlternate<pin>()` (`hal/detail/gpio_impl.h`, used by the driver: the pins are compile-time) writes the named fields (`moder.mode8`, ...) of that port only; the runtime overload in `gpio.cc` dispatches over the eleven ports and does register-level read-modify-writes, since a runtime pin number is no field name. |
+| `hal/gpio.h`, `hal/detail/gpio_impl.h` | `hal::Pin {port, number, alternate}` for the port descriptors; `hal::ConfigureAlternate<pin>()` (compile-time pins, used by the driver) forwards to `gpio::Pin::ConfigureAlternate()` (`docs/gpio/README.md`). |
 | `hal/cortex_m.h`, `hal/rcc.h` | NVIC and bus clocks; shared with the DMA driver, see `docs/dma/README.md`. |
 | `ring/mpsc_ring.h` (embedded-core) | `ring::MpscRing<kCapacity, kRecordSlots>`: lock-free MPSC ring of variable-size records. Producers reserve bytes and a record slot with one CAS on a packed 32-bit word, copy, then stamp the slot; a record never wraps (the buffer end is skipped instead). The single consumer's `Peek()` returns the committed, contiguous records at the tail as one span, and `Release()` frees them. Neither side waits. Storage is attached at runtime (`DMA_BUFFER`); control words stay in normal RAM. Part of embedded-core (`embedded_core::ring`), host-tested there. |
 

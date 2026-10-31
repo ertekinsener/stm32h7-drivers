@@ -20,6 +20,8 @@ package "stm32h7-drivers" {
   [stm32h7_drivers::groov\nINTERFACE, freestanding] as groov
   [embedded_core::ring\nINTERFACE] as ring
   [board::drivers_hal\nSTATIC, -O2: hal/] as drv_hal
+  [board::gpio\nSTATIC, -O2: gpio/, pins.cc] as gpio
+  [board::exti\nSTATIC, -O2: exti/, interrupts.cc] as exti
   [board::dma\nSTATIC, -O2: dma/, DMA1 stream 0, 1] as dma
   [board::uart\nSTATIC, -O2: uart/, usart3_vcp.cc] as uart
   [board::eth\nSTATIC: eth/] as eth
@@ -38,6 +40,11 @@ netx --> rtos
 
 drv_hal --> chip
 drv_hal --> groov
+gpio --> chip
+gpio --> groov
+gpio --> config
+exti --> gpio
+exti --> config
 dma --> drv_hal
 dma --> rtos
 uart --> dma
@@ -49,11 +56,14 @@ eth --> netx
 eth --> config
 
 drv_hal ..> support : PRIVATE
+gpio ..> support : PRIVATE
+exti ..> support : PRIVATE
 dma ..> support : PRIVATE
 uart ..> support : PRIVATE
 
 firmware --> startup
 firmware --> uart
+firmware --> exti
 firmware --> eth
 firmware ..> support : PRIVATE
 

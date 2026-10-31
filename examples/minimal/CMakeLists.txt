@@ -1,5 +1,5 @@
-# Minimal consumer of stm32h7-drivers as a package: the hal and dma
-# components and two DMA streams, without any ST or CMSIS headers (the
+# Minimal consumer of stm32h7-drivers as a package: the hal, dma, gpio and
+# exti components, two DMA streams, a pin and a pin interrupt, without any ST or CMSIS headers (the
 # drivers use their generated register maps). Builds a static library, so it
 # checks that everything configures and compiles without a board, startup
 # code or linker script.
@@ -27,9 +27,14 @@ target_compile_options(
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake")
 set(STM32H7_DRIVERS_DEVICE_TARGET stm32h755_cm7)
-find_package(STM32H7Drivers REQUIRED COMPONENTS hal dma)
+find_package(STM32H7Drivers REQUIRED COMPONENTS hal dma gpio exti)
 
-add_library(firmware STATIC main.cc)
+# The pin and pin interrupt instances contain groov code: built with -O2.
+groov_add_optimized_objects(pins SOURCES pins.cc INCLUDE_DIRECTORIES
+                            "${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_library(firmware STATIC main.cc $<TARGET_OBJECTS:pins>)
+target_include_directories(firmware PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(
-  firmware PRIVATE stm32h7_drivers::hal STM32H7Drivers::DMA::1::0
-                   STM32H7Drivers::DMA::1::1)
+  firmware PRIVATE stm32h7_drivers::hal stm32h7_drivers::exti
+                   STM32H7Drivers::DMA::1::0 STM32H7Drivers::DMA::1::1)

@@ -189,6 +189,8 @@ constexpr auto kMap =
             groov::field<"afsel14", std::uint8_t, 27u, 24u, groov::w::replace>,
             groov::field<"afsel15", std::uint8_t, 31u, 28u, groov::w::replace>>>{};
 
+// One constant per instance. groov groups are empty types: an unused
+// constant costs no flash or RAM, only the code that names it does.
 inline constexpr std::uintptr_t kGpioaBase = 0x58020000u;
 inline constexpr auto kGpioa = kMap<kGpioaBase>;
 inline constexpr std::uintptr_t kGpiobBase = 0x58020400u;

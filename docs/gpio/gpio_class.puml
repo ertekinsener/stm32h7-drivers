@@ -1,0 +1,95 @@
+@startuml gpio_class
+' GPIO and EXTI drivers. Class templates are instantiated by the
+' application in sources built with -O2 (board/pins.cc,
+' board/interrupts.cc); the public headers have no groov.
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+hide empty members
+
+package gpio {
+  class PinId <<struct>> {
+    port : Port
+    number : uint8_t
+  }
+  class Config <<struct>> {
+    mode : Mode
+    pull : Pull
+    output_type : OutputType
+    speed : Speed
+    alternate : uint8_t
+    initial_level : bool
+  }
+  class "Pin<PinId P>" as Pin <<static>> {
+    {static} Configure(Config)
+    {static} ConfigureInput(Pull)
+    {static} ConfigureOutput(level, type, speed, pull)
+    {static} ConfigureAlternate(af, type, speed, pull)
+    {static} ConfigureAnalog()
+    {static} Deinit()
+    {static} Set/GetMode, OutputType, Speed, Pull, Alternate
+    {static} Read() : bool
+    {static} IsOutputSet() : bool
+    {static} Set() / Reset() / Write(bool) / Toggle()
+    {static} Lock() : bool
+    {static} IsLocked() : bool
+  }
+  class "PortPins<Port P>" as PortPins <<static>> {
+    {static} EnableClock() / DisableClock()
+    {static} ReadInput() / ReadOutput() : uint16_t
+    {static} WriteOutput(uint16_t)
+    {static} Set / Reset / SetReset / Toggle (mask)
+    {static} Lock(mask) : bool
+  }
+  class "runtime functions" as Runtime <<functions>> {
+    Configure(PinId, Config)
+    Deinit / Read / Write / Toggle (PinId)
+    EnableClock(Port)
+  }
+}
+
+package exti {
+  class "Line<uint8_t N>" as Line <<static>> {
+    {static} SetTrigger(Edge) / DisableTrigger()
+    {static} Enable/DisableInterrupt(), Enable/DisableEvent()
+    {static} IsPending() / ClearPending()
+    {static} GenerateSoftwareInterrupt()
+  }
+  class "PinInterrupt<PinId P>" as PinInterrupt <<static>> {
+    {static} Configure(Edge, Callback, priority)
+    {static} Enable() / Disable()
+    {static} SetCallback(Callback)
+  }
+  class Callback <<struct>> {
+    function : void(*)(void*)
+    context : void*
+  }
+  class "EXTIn_IRQHandler\n(one source per vector)" as Handlers {
+    Dispatch<First, Last>()
+  }
+}
+
+package "generated maps (groov)" {
+  class "regs::gpio::kMap<Base>" as GpioMap
+  class "regs::exti::kExti" as ExtiMap
+  class "regs::syscfg::kSyscfg" as SyscfgMap
+  class "regs::rcc::kRcc" as RccMap
+}
+
+Pin ..> PortPins : EnableClock, Lock
+Pin ..> GpioMap
+PortPins ..> GpioMap
+PortPins ..> RccMap : AHB4ENR
+Runtime ..> PortPins
+PinInterrupt ..> Line
+PinInterrupt ..> SyscfgMap : EXTICR
+PinInterrupt ..> RccMap : APB4ENR.SYSCFGEN
+PinInterrupt ..> Handlers : links the line's vector
+Line ..> ExtiMap
+Handlers ..> ExtiMap : C1PR1 / C2PR1
+Handlers ..> Callback
+PinInterrupt ..> PinId
+Pin ..> PinId
+Pin ..> Config
+
+@enduml

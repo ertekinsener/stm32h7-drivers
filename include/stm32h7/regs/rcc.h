@@ -134,8 +134,23 @@ constexpr auto kMap =
             groov::field<"sai2en", bool, 23u, 23u, groov::w::replace>,
             groov::field<"sai3en", bool, 24u, 24u, groov::w::replace>,
             groov::field<"dfsdm1en", bool, 28u, 28u, groov::w::replace>,
-            groov::field<"hrtimen", bool, 29u, 29u, groov::w::replace>>>{};
+            groov::field<"hrtimen", bool, 29u, 29u, groov::w::replace>>,
+        groov::reg<"apb4enr", std::uint32_t, Base + 0x0f4u, groov::w::replace,
+            groov::field<"syscfgen", bool, 1u, 1u, groov::w::replace>,
+            groov::field<"lpuart1en", bool, 3u, 3u, groov::w::replace>,
+            groov::field<"spi6en", bool, 5u, 5u, groov::w::replace>,
+            groov::field<"i2c4en", bool, 7u, 7u, groov::w::replace>,
+            groov::field<"lptim2en", bool, 9u, 9u, groov::w::replace>,
+            groov::field<"lptim3en", bool, 10u, 10u, groov::w::replace>,
+            groov::field<"lptim4en", bool, 11u, 11u, groov::w::replace>,
+            groov::field<"lptim5en", bool, 12u, 12u, groov::w::replace>,
+            groov::field<"comp12en", bool, 14u, 14u, groov::w::replace>,
+            groov::field<"vrefen", bool, 15u, 15u, groov::w::replace>,
+            groov::field<"rtcapben", bool, 16u, 16u, groov::w::replace>,
+            groov::field<"sai4en", bool, 21u, 21u, groov::w::replace>>>{};
 
+// One constant per instance. groov groups are empty types: an unused
+// constant costs no flash or RAM, only the code that names it does.
 inline constexpr std::uintptr_t kRccBase = 0x58024400u;
 inline constexpr auto kRcc = kMap<kRccBase>;
 

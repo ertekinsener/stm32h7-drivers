@@ -164,6 +164,8 @@ constexpr auto kMap =
         groov::reg<"presc", std::uint32_t, Base + 0x02cu, groov::w::replace,
             groov::field<"prescaler", std::uint8_t, 3u, 0u, groov::w::replace>>>{};
 
+// One constant per instance. groov groups are empty types: an unused
+// constant costs no flash or RAM, only the code that names it does.
 inline constexpr std::uintptr_t kUsart1Base = 0x40011000u;
 inline constexpr auto kUsart1 = kMap<kUsart1Base>;
 inline constexpr std::uintptr_t kUsart2Base = 0x40004400u;

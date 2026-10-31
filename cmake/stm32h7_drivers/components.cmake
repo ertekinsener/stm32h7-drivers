@@ -8,9 +8,16 @@
 # as the application.
 #
 # Components and targets:
-#   hal           stm32h7_drivers::hal          GPIO, flash, RNG, RCC,
-#                                               NVIC/SCB: a STATIC library
-#                                               built with -O2 (groov)
+#   gpio          stm32h7_drivers::gpio         gpio::Pin, gpio::PortPins,
+#                                               runtime-pin functions; the
+#                                               board's pin instances go
+#                                               through
+#                                               groov_add_optimized_objects()
+#   exti          stm32h7_drivers::exti         exti::Line,
+#                                               exti::PinInterrupt, the
+#                                               EXTI0..EXTI15_10 handlers
+#   hal           stm32h7_drivers::hal          flash, RNG, RCC, NVIC/SCB
+#                                               (and gpio, for hal::Pin)
 #   dma           stm32h7_drivers::dma          dma::Stream; one target per
 #                                               stream instance,
 #                                               STM32H7Drivers::DMA::<c>::<s>
@@ -53,7 +60,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/groov_baremetal.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/dma_streams.cmake")
 
 set_property(GLOBAL PROPERTY STM32H7_DRIVERS_COMPONENTS
-             hal dma dma_threadx uart uart_threadx eth_netxduo)
+             gpio exti hal dma dma_threadx uart uart_threadx eth_netxduo)
 
 # stm32h7_drivers_add_components(<component>...)
 #
@@ -126,25 +133,53 @@ function(_stm32h7_drivers_add_headers)
 endfunction()
 
 
-# groov code: built on its own with -O2 (groov only collapses into plain
-# loads and stores once inlined), with the CPU flags of the device target or
-# the global flags.
+# groov code: a STATIC library built on its own with -O2 (groov only
+# collapses into plain loads and stores once inlined), with the CPU flags of
+# the device target or the global flags.
+function(_stm32h7_drivers_add_groov_library name)
+  _stm32h7_drivers_add_headers()
+  add_library(stm32h7_drivers_${name} STATIC ${ARGN})
+  add_library(stm32h7_drivers::${name} ALIAS stm32h7_drivers_${name})
+  target_link_libraries(stm32h7_drivers_${name} PUBLIC stm32h7_drivers::headers)
+  target_compile_options(
+    stm32h7_drivers_${name} PRIVATE -O2 $<$<CONFIG:Debug,RelWithDebInfo>:-g1>
+                                    -ffunction-sections -fno-exceptions -fno-rtti)
+  set_target_properties(stm32h7_drivers_${name} PROPERTIES JOB_POOL_COMPILE
+                                                           groov_compile)
+endfunction()
+
+function(_stm32h7_drivers_add_gpio)
+  if(TARGET stm32h7_drivers_gpio)
+    return()
+  endif()
+  _stm32h7_drivers_root(root)
+  _stm32h7_drivers_add_groov_library(gpio "${root}/source/gpio/gpio.cc")
+endfunction()
+
+function(_stm32h7_drivers_add_exti)
+  if(TARGET stm32h7_drivers_exti)
+    return()
+  endif()
+  _stm32h7_drivers_root(root)
+  _stm32h7_drivers_add_gpio()
+  set(sources "${root}/source/exti/exti.cc")
+  foreach(irq IN ITEMS exti0 exti1 exti2 exti3 exti4 exti9_5 exti15_10)
+    list(APPEND sources "${root}/source/exti/${irq}_irq.cc")
+  endforeach()
+  _stm32h7_drivers_add_groov_library(exti ${sources})
+  target_link_libraries(stm32h7_drivers_exti PUBLIC stm32h7_drivers::gpio)
+endfunction()
+
 function(_stm32h7_drivers_add_hal)
   if(TARGET stm32h7_drivers_hal)
     return()
   endif()
   _stm32h7_drivers_root(root)
-  _stm32h7_drivers_add_headers()
-  add_library(stm32h7_drivers_hal STATIC
-              "${root}/source/hal/flash.cc" "${root}/source/hal/gpio.cc"
-              "${root}/source/hal/rcc.cc" "${root}/source/hal/rng.cc")
-  add_library(stm32h7_drivers::hal ALIAS stm32h7_drivers_hal)
-  target_link_libraries(stm32h7_drivers_hal PUBLIC stm32h7_drivers::headers)
-  target_compile_options(
-    stm32h7_drivers_hal PRIVATE -O2 $<$<CONFIG:Debug,RelWithDebInfo>:-g1>
-                                -ffunction-sections -fno-exceptions -fno-rtti)
-  set_target_properties(stm32h7_drivers_hal PROPERTIES JOB_POOL_COMPILE
-                                                       groov_compile)
+  _stm32h7_drivers_add_gpio()
+  _stm32h7_drivers_add_groov_library(hal
+    "${root}/source/hal/flash.cc" "${root}/source/hal/rcc.cc"
+    "${root}/source/hal/rng.cc")
+  target_link_libraries(stm32h7_drivers_hal PUBLIC stm32h7_drivers::gpio)
 endfunction()
 
 function(_stm32h7_drivers_add_dma)

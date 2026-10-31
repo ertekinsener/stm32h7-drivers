@@ -85,7 +85,7 @@ tools/svd2groov/check_cmsis.py --cmsis <cmsis-device-h7>/Include/stm32h755xx.h \
 
 Every field whose CMSIS mask macro has the same name must have the same
 mask, and the interrupt numbers must be the same set; fields without a CMSIS
-macro of that name are listed. With the pinned SVD and the config: 556
+macro of that name are listed. With the pinned SVD and the config: 735
 fields and 145 interrupts match; two DMAMUX fields differ by design (the
 CMSIS macros are the widest of the H7 family; listed with the reason in the
 script), 32 fields have other names in CMSIS (e.g.

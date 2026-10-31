@@ -69,6 +69,8 @@ constexpr auto kMap =
             groov::field<"clr_dbeccerr2", bool, 26u, 26u, groov::write_only<groov::w::one_to_set>>,
             groov::field<"clr_crcend2", bool, 27u, 27u, groov::write_only<groov::w::one_to_set>>>>{};
 
+// One constant per instance. groov groups are empty types: an unused
+// constant costs no flash or RAM, only the code that names it does.
 inline constexpr std::uintptr_t kFlashBase = 0x52002000u;
 inline constexpr auto kFlash = kMap<kFlashBase>;
 

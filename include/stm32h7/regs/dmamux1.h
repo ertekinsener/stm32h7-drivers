@@ -146,6 +146,8 @@ constexpr auto kMap =
             groov::field<"nbreq", std::uint8_t, 23u, 19u, groov::w::replace>,
             groov::field<"sync_id", std::uint8_t, 26u, 24u, groov::w::replace>>>{};
 
+// One constant per instance. groov groups are empty types: an unused
+// constant costs no flash or RAM, only the code that names it does.
 inline constexpr std::uintptr_t kDmamux1Base = 0x40020800u;
 inline constexpr auto kDmamux1 = kMap<kDmamux1Base>;
 

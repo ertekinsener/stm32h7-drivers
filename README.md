@@ -12,7 +12,9 @@ register maps generated from the SVD ("Register maps" below). Used by the
 | `stm32h7_drivers::dma_threadx` | `dma/tx_completion.h` | `dma::TxCompletion`: DMA callbacks into ThreadX event flags. |
 | `stm32h7_drivers::uart` | `uart/usart.h`, `uart/types.h` | `uart::Usart<Port>`: RTOS-agnostic U(S)ART core, circular-DMA RX ring with IDLE detection, non-blocking ISR-safe `Write()` into a lock-free queue sent in one DMA transfer per batch, constexpr BRR. Design: `docs/uart/`. |
 | `stm32h7_drivers::uart_threadx` | `uart/threadx_serial.h` | `uart::ThreadxSerial<Port>`: blocking `Read`/`Write` and locking on ThreadX. |
-| `stm32h7_drivers::hal` | `hal/gpio.h`, `hal/flash.h`, `hal/rng.h`, `hal/rcc.h`, `hal/cortex_m.h`, `hal/cortex_m_cpu.h` | GPIO alternate functions, flash bank 2 erase/program, hardware RNG (thread safe), bus clocks, the Cortex-M7 core functions (NVIC, SCB, D-cache; PRIMASK). |
+| `stm32h7_drivers::gpio` | `gpio/gpio.h` | `gpio::Pin<PinId>`, `gpio::PortPins<Port>`: configuration (HAL level) and single-register operations (LL level: `Set`, `Toggle`, `SetSpeed`, `Lock`, ...); runtime-pin functions. Design: `docs/gpio/`. |
+| `stm32h7_drivers::exti` | `exti/exti.h` | `exti::Line<N>`, `exti::PinInterrupt<PinId>`: EXTI lines 0..31, GPIO pin interrupts with callbacks, the EXTI0..15 handlers. Design: `docs/gpio/`. |
+| `stm32h7_drivers::hal` | `hal/flash.h`, `hal/rng.h`, `hal/rcc.h`, `hal/cortex_m.h`, `hal/cortex_m_cpu.h`, `hal/gpio.h` | Flash bank 2 erase/program, hardware RNG (thread safe), bus clocks, the Cortex-M7 core functions (NVIC, SCB, D-cache; PRIMASK); `hal::Pin` (a pin with its alternate function, for the U(S)ART ports). |
 | (generated) | `stm32h7/regs/*.h`, `stm32h7/irq.h` | The groov register maps and the interrupt numbers, generated from the SVD; used by the drivers' implementation. |
 | `stm32h7_drivers::eth_netxduo` | `netxduo/nx_stm32_eth_driver.h`, `netxduo/lan8742.h` | NetX Duo Ethernet driver for the STM32 ETH (HAL) and the LAN8742 PHY (Microsoft/ST sources). |
 
@@ -47,6 +49,13 @@ st_add_hal(board::hal CHIP stm32::H755ZI::CM7 CONFIG board::hal_conf
            MODULES DMA ETH GPIO PWR)
 
 stm32h7_drivers_add_hal(board::drivers_hal CHIP stm32::H755ZI::CM7)
+stm32h7_drivers_add_gpio(board::gpio
+  CHIP stm32::H755ZI::CM7
+  CONFIG board::config          # pin definitions
+  INSTANCES board/pins.cc)      # template class gpio::Pin<...>;
+stm32h7_drivers_add_exti(board::exti
+  GPIO board::gpio
+  INSTANCES board/interrupts.cc)  # template class exti::PinInterrupt<...>;
 stm32h7_drivers_add_dma(board::dma
   HAL board::drivers_hal
   DMA_BUFFER_REGION RAM_D2      # chip region for DMA_BUFFER (.ram_d2)
@@ -61,18 +70,21 @@ stm32h7_drivers_add_eth_netxduo(board::eth
   ST_HAL board::hal NETXDUO board::netx
   CONFIG board::config)         # nx_stm32_eth_config.h
 
-target_link_libraries(firmware PRIVATE board::startup board::uart board::eth ...)
+target_link_libraries(firmware PRIVATE board::startup board::uart board::exti board::eth ...)
 ```
 
 | Function | Library | Checked at configure time |
 |---|---|---|
-| `stm32h7_drivers_add_hal(<name> CHIP <chip>)` | `hal/` (GPIO, flash, RNG, RCC, NVIC/SCB) | `CHIP` is an H7 `mcu_add_chip()` target; groov fetched |
+| `stm32h7_drivers_add_hal(<name> CHIP <chip>)` | `hal/` (flash, RNG, RCC, NVIC/SCB) | `CHIP` is an H7 `mcu_add_chip()` target; groov fetched |
+| `stm32h7_drivers_add_gpio(<name> CHIP <chip> [CONFIG <target>] [INSTANCES <source>...])` | `gpio::Pin`, `gpio::PortPins`, the application's pin instances | As above |
+| `stm32h7_drivers_add_exti(<name> GPIO <gpio> [CONFIG <target>] [INSTANCES <source>...])` | `exti::Line`, `exti::PinInterrupt`, the handlers of the lines in use | `GPIO` from `stm32h7_drivers_add_gpio()` |
 | `stm32h7_drivers_add_dma(<name> HAL <hal> DMA_BUFFER_REGION <region> STREAMS <c>.<s>... [THREADX <kernel>])` | `dma::Stream` for the listed streams, with their `DMAx_StreamN_IRQHandler`; `dma::TxCompletion` with `THREADX` | Region exists in the chip, is writable and not ITCM/DTCM; stream syntax, duplicates |
 | `stm32h7_drivers_add_uart(<name> DMA <dma> [CONFIG <target>] [PORTS <source>...] [THREADX <kernel>])` | `uart::Usart`, the application's port instances; `uart::ThreadxSerial` with `THREADX` | `DMA` from `stm32h7_drivers_add_dma()`; `embedded_core::ring` exists |
 | `stm32h7_drivers_add_eth_netxduo(<name> ST_HAL <hal> NETXDUO <netx> CONFIG <target>)` | NetX Duo driver, LAN8742 PHY | HAL has the ETH module; `CONFIG` provides `nx_stm32_eth_config.h` |
 
-- The three driver libraries contain the groov code (`hal/*.cc`, the DMA
-  stream instances, the UART ports) and are built with `-O2` in every
+- The driver libraries contain the groov code (`hal/*.cc`, `gpio.cc`,
+  `exti*.cc`, the pin, DMA stream and UART port instances) and are built
+  with `-O2` in every
   configuration, in the job pool `groov_compile`. The public headers have no
   groov: the application keeps its own flags. The linker only takes the
   streams and ports the firmware calls, each with its IRQ handler; a stream
@@ -117,12 +129,13 @@ target_sources(firmware PRIVATE $<TARGET_OBJECTS:uart_ports>)
 ```
 
 or with `add_subdirectory(<path>/stm32h7-drivers)` (all components) in place
-of `find_package`. Components: `hal`, `dma`, `dma_threadx`, `uart`,
-`uart_threadx`, `eth_netxduo` (default: all); the ones they depend on are
+of `find_package`. Components: `gpio`, `exti`, `hal`, `dma`,
+`dma_threadx`, `uart`, `uart_threadx`, `eth_netxduo` (default: all); the ones they depend on are
 added automatically, and `eth_netxduo` alone needs neither groov nor
-embedded-core. `stm32h7_drivers::hal` is a STATIC library and the DMA
-streams are object libraries, all built with `-O2` (groov); the board ports
-go through `groov_add_optimized_objects()` for the same reason. The other
+embedded-core. `stm32h7_drivers::gpio`, `exti` and `hal` are STATIC
+libraries and the DMA streams object libraries, all built with `-O2`
+(groov); the board's pin, interrupt and port instances go through
+`groov_add_optimized_objects()` for the same reason. The other
 targets are INTERFACE libraries (below).
 
 Each DMA stream is its own target, `STM32H7Drivers::DMA::<1|2>::<0..7>`
